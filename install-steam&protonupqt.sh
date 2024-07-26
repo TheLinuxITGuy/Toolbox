@@ -2,7 +2,7 @@
 
 echo -e "\033[0;32m====================================="
 echo -e "\033[1;32mThe Linux IT Guy - Linux Mint Scripts"
-echo -e "\033[1;32mInstall Steam & ProtonUp-Qt"
+echo -e "\033[1;32mInstalling Steam & ProtonUp-Qt"
 echo -e "\033[0;32m=====================================\033[0m"
 
 # Navigate to the directory where you want to download the .deb file

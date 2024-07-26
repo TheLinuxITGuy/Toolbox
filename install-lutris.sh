@@ -1,5 +1,9 @@
 #!/bin/bash
 
+echo -e "\033[1;33m====================================="
+echo -e "\033[1;32mThe Linux IT Guy"
+echo -e "\033[1;33m=====================================\033[0m"
+
 # Update the package list
 sudo apt update
 

@@ -15,4 +15,4 @@ sudo apt install -y flatpak
 flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
 # Install Edge
-flatpak install flathub com.microsoft.Edge
+flatpak install -y flathub com.microsoft.Edge

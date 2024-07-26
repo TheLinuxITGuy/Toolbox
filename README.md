@@ -12,4 +12,6 @@ Various scripts for Linux Mint.
 -  **install-gimp:** Updates the package list, Adds Flahub report if needed, Downloads and Installs GIMP
 -  **install-lutris.sh:** Updates the package list, Adds Flathub repo if needed, Downloads and Installs Lutris
 -  **install-steam&protonupqt.sh:** Updates the package list, Downloads and Installs Steam along with any missing dependencies, Downloads and Installs ProtonUp-Qt
--  **remove-apps.sh:** Removes Libre Office, Firefox, and Thunderbird Mail
+-  **remove-firefox.sh:** Removes Firefox
+-  **remove-libreoffice.sh:** Removes Libre Office
+-  **remove-thunderbird.sh:** Removes Thunderbird Mail

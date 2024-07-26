@@ -11,8 +11,13 @@ cd ~/Downloads
 # Update the package list
 sudo apt update
 
-# Download the latest Steam .deb package
-wget http://media.steampowered.com/client/installer/steam.deb
+# Check if the .deb package is already downloaded
+if [ ! -f steam.deb ]; then
+    # Download the latest Steam .deb package
+    wget wget http://media.steampowered.com/client/installer/steam.deb
+else
+    echo "Steam .deb package is already downloaded."
+fi
 
 # Install the package
 sudo dpkg -i steam.deb

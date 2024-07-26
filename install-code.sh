@@ -15,4 +15,4 @@ sudo apt install -y flatpak
 flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
 # Install Code
-flatpak install flathub com.visualstudio.code
+flatpak install -y flathub com.visualstudio.code

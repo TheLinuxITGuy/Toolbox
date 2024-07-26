@@ -1,14 +1,7 @@
-# Linux Mint Scripts
-Various scripts for Linux Mint.
+# VMware Player Fix
+This fix is for Linux Mint.
+## Download
+- You need broadcom account then goto VMWare Workstation Pro Download Page and download latest version. https://support.broadcom.com/group/ecx/productdownloads?subfamily=VMware+Workstation+Pro
 
 ## What does each script do?
--  **AfterInstall.sh:** Installs ALL of these scripts - USEFUL after a fresh install
--  **install-bravebrowser.sh:** Adds the Brave repo's GPG key, Adds the Brave repo, Updates the package list, Downloads and Installs Brave
--  **install-chromebrowser.sh:** Updates the package list, Downloads the .deb package to your ~/Downloads folder, Installs Chrome along with any missing dependencies
--  **install-code:** Updates the package list, Adds Flahub report if needed, Downloads and Installs Visual Studio Code
--  **install-discord:** Updates the package list, Adds Flahub report if needed, Downloads and Installs Discord
--  **install-edge:** Updates the package list, Adds Flahub report if needed, Downloads and Installs Microsoft Edge
--  **install-gimp:** Updates the package list, Adds Flahub report if needed, Downloads and Installs GIMP
--  **install-lutris.sh:** Updates the package list, Adds Flathub repo if needed, Downloads and Installs Lutris
--  **install-steam&protonupqt.sh:** Updates the package list, Downloads and Installs Steam along with any missing dependencies, Downloads and Installs ProtonUp-Qt
--  **remove-apps.sh:** Removes Libre Office, Firefox, and Thunderbird Mail
+- This script will apply the the vmmon and vmnet fixes required to get VMware Player to run.

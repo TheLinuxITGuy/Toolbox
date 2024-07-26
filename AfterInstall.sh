@@ -9,7 +9,7 @@ echo -e "\033[0;32m=====================================\033[0m"
 dir="."
 
 # Array of script names
-scripts=("install-bravebrowser.sh" "install-chromebrowser.sh" "install-code.sh" "install-edge.sh" "install-gimp.sh" "install-lutris.sh" "install-steam&protonupqt.sh" "remove-apps.sh")
+scripts=("install-bravebrowser.sh" "install-chromebrowser.sh" "install-code.sh" "install-discord.sh" "install-edge.sh" "install-gimp.sh" "install-lutris.sh" "install-steam&protonupqt.sh" "remove-apps.sh")
 
 # Iterate over each script in the array
 for script in "${scripts[@]}"

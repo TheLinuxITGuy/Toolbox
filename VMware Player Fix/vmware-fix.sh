@@ -15,7 +15,7 @@ if [ ! -f ~/Downloads/VMware-*.bundle ]; then
 fi
 
 # Run the VMware Player installer
-sudo ~/Downloads/VMware-Player-*.bundle
+sudo ~/Downloads/VMware-*.bundle
 
 # Change directory to ~/Downloads
 cd ~/Downloads 

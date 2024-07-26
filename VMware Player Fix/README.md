@@ -10,6 +10,7 @@ This fix will work for Linux Mint 22 and Ubuntu 24.04.
 ## How do I run it?
 - Download VMware Player to ~/Downloads
 - Open a terminal from ~/Downloads
+- Type: chmod u+x vmware-fix.sh
 - Type: ./vmware-fix.sh
 - Enter your sudo password
 - Once the script finishes, fire up VMware Player from SUPER->Administrator

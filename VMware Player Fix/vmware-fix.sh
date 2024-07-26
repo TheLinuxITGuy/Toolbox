@@ -6,7 +6,7 @@ echo -e "\033[1;32mVMware Player Fix"
 echo -e "\033[0;32m=====================================\033[0m"
 
 # Check if VMware Player bundle exists in ~/Downloads
-if [ ! -f ~/Downloads/VMware-Player-*.bundle ]; then
+if [ ! -f ~/Downloads/VMware-*.bundle ]; then
     echo "Run the script from ~/Downloads/"
     exit 1
 fi

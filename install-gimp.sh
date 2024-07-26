@@ -15,4 +15,4 @@ sudo apt install -y flatpak
 flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
 # Install GIMP
-flatpak install flathub org.gimp.GIMP
+flatpak install -y flathub org.gimp.GIMP

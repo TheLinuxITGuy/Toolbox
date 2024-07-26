@@ -8,16 +8,22 @@ echo -e "\033[0;32m=====================================\033[0m"
 # Directory containing the scripts
 dir="."
 
-# Iterate over each .sh file in the directory
-for script in "$dir"/*.sh
+# Array of script names
+scripts=("install-bravebrowser.sh" "install-chromebrowser.sh" "install-code.sh" "install-edge.sh" "install-gimp.sh" "install-lutris.sh" "install-steam&protonupqt.sh" "remove-apps.sh")
+
+# Iterate over each script in the array
+for script in "${scripts[@]}"
 do
+  # Full path to the script
+  full_path="$dir/$script"
+
   # Only proceed if the file is executable
-  if [ -x "$script" ]
+  if [ -x "$full_path" ]
   then
     echo "Running $script"
-    # Run the script
-    "$script"
+    # Run the script and wait for it to finish
+    "$full_path"
   else
-    echo "Skipping $script (not executable)"
+    echo "Skipping $script (not executable or does not exist)"
   fi
 done

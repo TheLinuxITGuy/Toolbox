@@ -1,8 +1,7 @@
 # VMware Player Fix
 This fix is for Linux Mint.
 ## Download
-- You need a broadcom account
-- Then goto the VMWare Workstation Pro Download Page
+- Create a broadcom account
 - Download the latest version here: https://support.broadcom.com/group/ecx/productdownloads?subfamily=VMware+Workstation+Pro
 
 ## What does each script do?

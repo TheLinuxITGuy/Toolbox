@@ -5,14 +5,14 @@ echo -e "\033[1;32mThe Linux IT Guy - Linux Mint Scripts"
 echo -e "\033[1;32mVMware Player Fix"
 echo -e "\033[0;32m=====================================\033[0m"
 
+# Change permissions to make the bundle executable
+chmod u+x ~/Downloads/VMware-*.bundle
+
 # Check if VMware Player bundle exists in ~/Downloads
 if [ ! -f ~/Downloads/VMware-*.bundle ]; then
     echo "Run the script from ~/Downloads/"
     exit 1
 fi
-
-# Change permissions to make the bundle executable
-chmod u+x ~/Downloads/VMware-Player-*.bundle
 
 # Run the VMware Player installer
 sudo ~/Downloads/VMware-Player-*.bundle

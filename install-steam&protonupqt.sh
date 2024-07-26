@@ -20,8 +20,11 @@ sudo dpkg -i steam.deb
 # Install any missing dependencies and finish configuring the package
 sudo apt install -f -y
 
-# Download ProtonUp-Qt
-wget https://github.com/DavidoTek/ProtonUp-Qt/releases/download/v2.9.2/ProtonUp-Qt-2.9.2-x86_64.AppImage
+# Install flatpak
+sudo apt install -y flatpak
 
-# Set ProtonUp-Qt Executable
-chmod +x ProtonUp-Qt-2.9.2-x86_64.AppImage
+# Add the Flathub repository
+flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+# Install ProtonUp-Qt
+flatpak install -y flathub net.davidotek.pupgui2

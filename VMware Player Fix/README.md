@@ -8,10 +8,10 @@ This fix will work for Linux Mint 22 and Ubuntu 24.04.
 - This script will patch the **vmmon** and **vmnet** VMware modules required to run VMware Player.
 
 ## How do I run it?
-- Download VMware Player to ~/Downloads
-- Download vmware-fix.sh to ~/Downloads
-- Open a terminal from ~/Downloads
-- Type: chmod u+x vmware-fix.sh
-- Type: ./vmware-fix.sh
+- Download **VMware Player** to ~/Downloads
+- Download **vmware-fix.sh** to ~/Downloads
+- Open a **Terminal** from ~/Downloads
+- **Type:** chmod u+x vmware-fix.sh
+- **Type:** ./vmware-fix.sh
 - Enter your sudo password
-- Once the script finishes, fire up VMware Player from SUPER->Administrator
+- Once the script is complete, fire up **VMware Player** (SUPER->Administrator->VMware Player)

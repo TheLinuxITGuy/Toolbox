@@ -10,6 +10,6 @@ This fix is for Linux Mint.
 
 ## How do I run it?
 - Make sure to run ./vmware-fix.sh from ~/Downloads
-- In a terminal from ~/Downloads, run vmwarefix.sh
+- In a terminal from ~/Downloads, run vmware-fix.sh
 - Enter your sudo password
 - Once the script finishes, fire up VMware Player from SUPER->Administrator

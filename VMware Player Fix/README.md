@@ -1,11 +1,11 @@
 # VMware Player Fix
-This fix is for Linux Mint.
+This fix will work for Linux Mint and Ubuntu 24.04.
 ## Download
 - Create a broadcom account here: https://profile.broadcom.com/web/registration
 - Download the latest version of VMware Player here: https://support.broadcom.com/group/ecx/productdownloads?subfamily=VMware+Workstation+Pro
 
 ## What does this script do?
-- This script will apply the **vmmon** and **vmnet** VMware modules required to run VMware Player.
+- This script will patch the **vmmon** and **vmnet** VMware modules required to run VMware Player.
 
 ## How do I run it?
 - Download VMware Player to ~/Downloads

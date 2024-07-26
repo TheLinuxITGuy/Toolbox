@@ -26,4 +26,10 @@ do
   else
     echo "Skipping $script (not executable or does not exist)"
   fi
+  
+  echo -e "\033[0;32m====================================="
+  echo -e "\033[1;32mThe Linux IT Guy - Linux Mint Scripts"
+  echo -e "\033[1;32mAfter Install - Script Complete"
+  echo -e "\033[0;32m=====================================\033[0m"
+
 done

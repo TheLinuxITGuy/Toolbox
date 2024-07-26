@@ -4,7 +4,7 @@ This fix is for Linux Mint.
 - Create a broadcom account here: https://profile.broadcom.com/web/registration
 - Download the latest version of VMware Player here: https://support.broadcom.com/group/ecx/productdownloads?subfamily=VMware+Workstation+Pro
 
-## What does each script do?
+## What does this script do?
 - This script will apply the vmmon and vmnet VMware modules required to get VMware Player to run.
 
 ## How do I run it?

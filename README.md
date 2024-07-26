@@ -2,6 +2,7 @@
 Various scripts for Linux Mint.
 
 ## What does each script do?
+-  **AfterInstall.sh:** Installs ALL of these scripts - USEFUL after a fresh install
 -  **install-bravebrowser.sh:** Adds the Brave repo's GPG key, Adds the Brave repo, Updates the package list, Downloads and Installs Brave
 -  **install-chromebrowser.sh:** Updates the package list, Downloads the .deb package to your ~/Downloads folder, Installs Chrome along with any missing dependencies
 -  **install-code:** Updates the package list, Adds Flahub report if needed, Downloads and Installs Visual Studio Code

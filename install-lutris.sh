@@ -1,9 +1,9 @@
 #!/bin/bash
 
-echo -e "\033[1;33m====================================="
+echo -e "\033[0;32m====================================="
 echo -e "\033[1;32mThe Linux IT Guy - Linux Mint Scripts"
 echo -e "\033[1;32mInstall Lutris"
-echo -e "\033[1;33m=====================================\033[0m"
+echo -e "\033[0;32m=====================================\033[0m"
 
 # Update the package list
 sudo apt update

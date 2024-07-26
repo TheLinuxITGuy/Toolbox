@@ -5,9 +5,10 @@ This fix is for Linux Mint.
 - Download the latest version of VMware Player here: https://support.broadcom.com/group/ecx/productdownloads?subfamily=VMware+Workstation+Pro
 
 ## What does this script do?
-- This script will apply the vmmon and vmnet VMware modules required to get VMware Player to run.
+- This script will apply the **vmmon** and **vmnet** VMware modules required to run VMware Player.
 
 ## How do I run it?
+- Download VMware Player to ~/Downloads
 - Open a terminal from ~/Downloads
 - Type: ./vmware-fix.sh
 - Enter your sudo password

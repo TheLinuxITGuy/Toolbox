@@ -9,7 +9,7 @@ This fix is for Linux Mint.
 - This script will apply the vmmon and vmnet VMware modules required to get VMware Player to run.
 
 ## How do I run it?
-- Make sure to run ./vmware-fix.sh from ~/Downloads
-- In a terminal from ~/Downloads, run vmware-fix.sh
+- Open a terminal from ~/Downloads
+- Type: vmware-fix.sh
 - Enter your sudo password
 - Once the script finishes, fire up VMware Player from SUPER->Administrator

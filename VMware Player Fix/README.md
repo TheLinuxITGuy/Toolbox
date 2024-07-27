@@ -1,5 +1,5 @@
 # VMware Player Fix
-This fix will work for Linux Mint 22 and Ubuntu 24.04.
+This fix will work for Linux Mint 22 and Ubuntu 24.04. This works as of 7/26/24.
 ## Download
 - Create a broadcom account here: https://profile.broadcom.com/web/registration
 - Download the latest version of VMware Player here: https://support.broadcom.com/group/ecx/productdownloads?subfamily=VMware+Workstation+Pro

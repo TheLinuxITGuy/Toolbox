@@ -50,8 +50,8 @@ class ourwindow(Gtk.Window):
         frame_remove.add(box_remove)
 
         self.remove_checkboxes = []
-        remove_options = [("Firefox", "./remove-firefox.sh"), ("Libre Office", "./remove-libreoffice.sh"), 
-                          ("Thunderbird Mail", "./remove-thunderbird.sh")]
+        remove_options = [("Celluloid", "./remove-celluloid.sh"), ("Firefox", "./remove-firefox.sh"), ("Hypnotix", "./remove-hypnotix.sh"), 
+                          ("Libre Office", "./remove-libreoffice.sh"), ("Rhythmbox", "./remove-rhythmbox.sh"), ("Thunderbird Mail", "./remove-thunderbird.sh")]
 
         for option, script in remove_options:
             check_button = Gtk.CheckButton(label=option)

@@ -1,5 +1,5 @@
 # Linux Mint Scripts
-Various scripts for Linux Mint.
+Add and Remove the pre-installed software from Linux Mint with ease.
 
 
 

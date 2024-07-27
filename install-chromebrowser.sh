@@ -20,7 +20,7 @@ else
 fi
 
 # Install the package
-sudo DEBIAN_FRONTEND=noninteractive dpkg -i -y google-chrome-stable_current_amd64.deb
+sudo DEBIAN_FRONTEND=noninteractive dpkg -i google-chrome-stable_current_amd64.deb
 
 # Install any missing dependencies and finish configuring the package
 sudo apt install -f -y

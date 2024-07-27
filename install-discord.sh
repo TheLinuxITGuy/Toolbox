@@ -15,4 +15,4 @@ sudo apt install -y flatpak
 flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
 # Install Discord
-flatpak install flathub com.discordapp.Discord
+flatpak install -y flathub com.discordapp.Discord

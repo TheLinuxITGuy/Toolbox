@@ -1,6 +1,16 @@
 # Linux Mint Scripts
 Various scripts for Linux Mint.
 
+## How do I use it?
+- Download the latest release into your ~/Downloads folder
+- Open a terminal
+- Type: cd ~/Downloads
+- Type: cd LinuxMintScripts
+- Type: chmod u+x ./*.*
+- Type: ./Main.py
+- Select the Applications you would like to Install/Remove
+- Click Run
+
 ## What does each script do?
 - **Main.py:** GUI that allows you to Install/Remove applications all at once
 -  **AfterInstall.sh:** Runs ALL the scripts **Use Main.py instead**

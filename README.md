@@ -3,7 +3,7 @@ Add and Remove the pre-installed software from Linux Mint with ease.
 
 
 
-![](<Screenshot/Screenshot%20from%202024-07-26%2018-17-09.png>)
+![](<Screenshot/Screenshot.png>)
 
 ## How do I use it?
 - Download the latest .tar.gz release into your ~/Downloads folder

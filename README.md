@@ -1,6 +1,6 @@
 # Linux Mint Scripts
 Various scripts for Linux Mint.
-![](<Screenshots/Screenshot%20from%202024-07-26%2018-17-09.png>)
+![](<Screenshot/Screenshot%20from%202024-07-26%2018-17-09.png>)
 
 ## How do I use it?
 - Download the latest release into your ~/Downloads folder

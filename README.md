@@ -11,7 +11,7 @@ Add and Remove the pre-installed software from Linux Mint with ease.
 - Type: cd ~/Downloads
 - Type: tar -xzf Linux-Mint-Scripts-1.0.tar.gz
 - Type: cd Linux-Mint-Scripts-1.0
-- Type: "chmod u+x ./*.*"
+- Type: "chmod u+x ./\*.\*"
 - Type: ./Main.py
 - Select the Applications you would like to Install/Remove
 - Click Run

@@ -30,3 +30,4 @@ Add and Remove the pre-installed software from Linux Mint with ease.
 -  **remove-firefox.sh:** Removes Firefox
 -  **remove-libreoffice.sh:** Removes Libre Office
 -  **remove-thunderbird.sh:** Removes Thunderbird Mail
+-  etc, etc...

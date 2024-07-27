@@ -6,10 +6,11 @@ Add and Remove the pre-installed software from Linux Mint with ease.
 ![](<Screenshot/Screenshot%20from%202024-07-26%2018-17-09.png>)
 
 ## How do I use it?
-- Download the latest release into your ~/Downloads folder
-- Open a terminal
+- Download the latest .tar.gz release into your ~/Downloads folder
+- Open a Terminal
 - Type: cd ~/Downloads
-- Type: cd LinuxMintScripts
+- Type: tar -xzf Linux-Mint-Scripts-1.0.tar.gz
+- Type: cd Linux-Mint-Scripts-1.0
 - Type: chmod u+x ./*.*
 - Type: ./Main.py
 - Select the Applications you would like to Install/Remove

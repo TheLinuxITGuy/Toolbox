@@ -16,6 +16,9 @@ Add and Remove the pre-installed software from Linux Mint with the click of a bu
 - Select the Applications you would like to Install/Remove
 - Click Run
 
+## Video
+[![Video](https://img.youtube.com/vi/2uZ2nKqSUyE/maxresdefault.jpg)](https://youtu.be/2uZ2nKqSUyE?si=s5R-kx7815zsqOnR&t=697)
+
 ## What does each script do?
 - **Main.py:** GUI that allows you to Install/Remove applications all at once
 -  **AfterInstall.sh:** Runs ALL the scripts **Use Main.py instead**

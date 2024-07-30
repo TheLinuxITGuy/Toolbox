@@ -9,10 +9,9 @@ Add and Remove the pre-installed software from Linux Mint with the click of a bu
 1. Download the latest .tar.gz release into your ~/Downloads folder
 2. Open a Terminal
     1. Type: `cd ~/Downloads`
-    2. Type: `tar -xzf Linux-Mint-Scripts-1.x.tar.gz`
-    3. Type: `cd Linux-Mint-Scripts-1.x`
-    4. Type: `chmod u+x ./*.*`
-    5. Type: `./Main.py`
+    2. Type: `tar -xzf Linux-Mint-Scripts-1.x.tar.gz && cd Linux-Mint-Scripts-1.x` Replace the x with the version you downloaded
+    3. Type: `chmod u+x ./*.*`
+    4. Type: `./Main.py`
 3. Select the Applications you would like to Install/Remove
 4. Click Run
 

@@ -1,20 +1,18 @@
 # Linux Mint Scripts
 Add and Remove the pre-installed software from Linux Mint with the click of a button
 
-
-
 ![](<Screenshot/Screenshot.png>)
 
 ## How do I use it?
-- Download the latest .tar.gz release into your ~/Downloads folder
-- Open a Terminal
-- Type: cd ~/Downloads
-- Type: tar -xzf Linux-Mint-Scripts-1.x.tar.gz
-- Type: cd Linux-Mint-Scripts-1.x
-- Type: chmod u+x ./\*.\*
-- Type: ./Main.py
-- Select the Applications you would like to Install/Remove
-- Click Run
+1. Download the latest .tar.gz release into your ~/Downloads folder
+2. Open a Terminal
+3. Type: `cd ~/Downloads`
+4. Type: `tar -xzf Linux-Mint-Scripts-1.x.tar.gz`
+5. Type: `cd Linux-Mint-Scripts-1.x`
+6. Type: `chmod u+x ./\*.\*`
+7. Type: `./Main.py`
+8. Select the Applications you would like to Install/Remove
+9. Click Run
 
 ## Video
 [![Video](https://img.youtube.com/vi/2uZ2nKqSUyE/maxresdefault.jpg)](https://youtu.be/2uZ2nKqSUyE?si=s5R-kx7815zsqOnR&t=697)

@@ -4,7 +4,7 @@ Add and Remove the pre-installed software from Linux Mint with the click of a bu
 ![](<Screenshot/Screenshot.png>)
 
 ## How do I use it?
-
+There are two options: Release and Git. Please choose one.
 ### Release method
 1. Download the latest .tar.gz release into your ~/Downloads folder
 2. Open a Terminal

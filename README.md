@@ -19,7 +19,7 @@ Add and Remove the pre-installed software from Linux Mint with the click of a bu
 ### Git method
 1. From a Terminal, clone this project and cd into it: 
     1. `git clone https://github.com/TheLinuxITGuy/Linux-Mint-Scripts.git && cd Linux-Mint-Scripts`
-    2. Type: `chmod u+x ./\*.\*`
+    2. Type: `chmod u+x ./*.*`
     3. Type: `./Main.py`
 4. Select the Application you would like to Install/Remove
 5. Click Run

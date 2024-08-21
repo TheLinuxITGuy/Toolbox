@@ -29,7 +29,8 @@ class ourwindow(Gtk.Window):
         install_options = [("Brave Browser", "./install-bravebrowser.sh"), ("Google Chrome", "./install-chromebrowser.sh"), 
                            ("Microsoft Visual Studio Code", "./install-code.sh"), ("Discord", "./install-discord.sh"), 
                            ("Microsoft Edge", "./install-edge.sh"), ("GIMP", "./install-gimp.sh"), 
-                           ("Lutris", "./install-lutris.sh"), ("Steam & ProtonUp-Qt", "./install-steam&protonupqt.sh")]
+                           ("Lutris", "./install-lutris.sh"), ("OBS-Studio", "./install-obs.sh"),
+                           ("Steam & ProtonUp-Qt", "./install-steam&protonupqt.sh")]
 
         for option, script in install_options:
             check_button = Gtk.CheckButton(label=option)
@@ -51,7 +52,8 @@ class ourwindow(Gtk.Window):
 
         self.remove_checkboxes = []
         remove_options = [("Celluloid", "./remove-celluloid.sh"), ("Firefox", "./remove-firefox.sh"), ("Hypnotix", "./remove-hypnotix.sh"), 
-                          ("Libre Office", "./remove-libreoffice.sh"), ("Rhythmbox", "./remove-rhythmbox.sh"), ("Thunderbird Mail", "./remove-thunderbird.sh")]
+                          ("Libre Office", "./remove-libreoffice.sh"), ("OBS-Studio", "./remove-obs.sh"),
+                          ("Rhythmbox", "./remove-rhythmbox.sh"), ("Thunderbird Mail", "./remove-thunderbird.sh")]
 
         for option, script in remove_options:
             check_button = Gtk.CheckButton(label=option)

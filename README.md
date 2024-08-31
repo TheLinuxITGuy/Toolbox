@@ -1,7 +1,7 @@
 # Linux Mint Scripts
 Add and Remove the pre-installed software from Linux Mint with the click of a button
 
-![](<Screenshot/Screenshot.png>)
+![](<Screenshot/Screenshot1.png>)
 
 ## How do I use it?
 There are two options: Release and Git. Please choose one.

@@ -25,7 +25,7 @@ There are two options: Release and Git. Please choose one.
 4. Click Run
 
 ## Video
-[![Video](https://img.youtube.com/vi/2uZ2nKqSUyE/maxresdefault.jpg)](https://youtu.be/2uZ2nKqSUyE?si=s5R-kx7815zsqOnR&t=697)
+[![Video](https://img.youtube.com/vi/PJytFBO3seM/maxresdefault.jpg)](https://youtu.be/PJytFBO3seM)
 
 ## What does each script do?
 - **Main.py:** GUI that allows you to Install/Remove applications all at once

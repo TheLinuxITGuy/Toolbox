@@ -140,7 +140,7 @@ class OurWindow(Gtk.Window):
         frame_system_utils.add(box_system_utils)
 
         self.system_utils_checkboxes = []
-        system_utils_options = [("HTop", "./install-htop.sh"), ("Neofetch", "./install-neofetch.sh"), 
+        system_utils_options = [("htop", "./install-htop.sh"), ("Neofetch", "./install-neofetch.sh"), 
                                 ("GParted", "./install-gparted.sh"), ("QEMU", "./install-QEMU.sh")]
 
         for option, script in system_utils_options:

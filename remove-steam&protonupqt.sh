@@ -1,6 +1,6 @@
 #!/bin/bash
 
-APP_NAME="celluloid"
+APP_NAME="steam"
 NALA_CMD="nala"
 
 echo -e "\033[0;32m====================================="
@@ -27,3 +27,24 @@ then
 else
     echo "$APP_NAME is not installed. Skipping uninstallation."
 fi
+
+NALA_CMD="nala"
+
+echo -e "\033[0;32m====================================="
+echo -e "\033[1;32mThe Linux IT Guy - Linux Mint Scripts"
+echo -e "\033[1;32mUninstalling ProtonUp-Qt"
+echo -e "\033[0;32m=====================================\033[0m"
+
+# Check if Nala is installed
+if ! command -v $NALA_CMD &> /dev/null
+then
+    echo "Nala is not installed. Installing now..."
+    sudo apt update
+    sudo apt install -y nala
+fi
+
+# Update the package list using Nala
+sudo nala update
+
+# Uninstall Brave Browser using flatpak
+flatpak uninstall -y flathub net.davidotek.pupgui2

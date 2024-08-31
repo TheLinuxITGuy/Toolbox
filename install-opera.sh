@@ -4,7 +4,7 @@ NALA_CMD="nala"
 
 echo -e "\033[0;32m====================================="
 echo -e "\033[1;32mThe Linux IT Guy - Linux Mint Scripts"
-echo -e "\033[1;32mInstalling Lutris"
+echo -e "\033[1;32mInstalling Opera"
 echo -e "\033[0;32m=====================================\033[0m"
 
 # Check if Nala is installed
@@ -24,5 +24,5 @@ sudo nala install -y flatpak
 # Add the Flathub repository
 flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
-# Install App
-flatpak install -y flathub net.lutris.Lutris
+# Install Opera
+flatpak install -y flathub com.opera.Opera

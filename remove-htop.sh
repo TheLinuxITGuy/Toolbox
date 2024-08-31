@@ -1,6 +1,6 @@
 #!/bin/bash
 
-APP_NAME="celluloid"
+APP_NAME="htop"
 NALA_CMD="nala"
 
 echo -e "\033[0;32m====================================="

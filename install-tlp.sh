@@ -1,6 +1,6 @@
 #!/bin/bash
 
-APP_NAME="obs-studio"
+APP_NAME="tlp tlp-rdw"
 NALA_CMD="nala"
 
 echo -e "\033[0;32m====================================="
@@ -26,6 +26,8 @@ then
     sudo nala install -y $APP_NAME
     # Install any missing dependencies and finish configuring the package
     sudo nala install -f -y
+    sudo systemctl enable tlp
+    sudo systemctl start tlp
 else
     echo "$APP_NAME is already installed. Skipping installation."
 fi

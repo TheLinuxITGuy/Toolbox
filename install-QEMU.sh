@@ -1,6 +1,6 @@
 #!/bin/bash
 
-APP_NAME="obs-studio"
+APP_NAME="qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients bridge-utils virt-manager ovmf"
 NALA_CMD="nala"
 
 echo -e "\033[0;32m====================================="

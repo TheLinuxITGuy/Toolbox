@@ -1,6 +1,6 @@
 #!/bin/bash
 
-APP_NAME="obs-studio"
+APP_NAME="gparted"
 NALA_CMD="nala"
 
 echo -e "\033[0;32m====================================="

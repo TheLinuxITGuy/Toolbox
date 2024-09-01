@@ -38,7 +38,7 @@ Make sure you have the following installed:
 ## Video
 
 [![Video](https://img.youtube.com/vi/PJytFBO3seM/maxresdefault.jpg)](https://youtu.be/PJytFBO3seM)
-[![Video](<Screenshot/Screencast 2024-09-01 18:49:35.mp4>)]
+[![Video](<Screenshot/Screenshot1.png>)](https://youtu.be/F1ENOytBNdg)
 
 ## What does each script do?
 

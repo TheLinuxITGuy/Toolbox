@@ -1,0 +1,28 @@
+Category,App Name,Flatpak Location
+Browsers,Brave Browser,com.brave.Browser
+Browsers,Google Chrome,com.google.Chrome
+Browsers,firefox,
+Browsers,Microsoft Edge,com.microsoft.Edge
+Browsers,Opera,com.opera.Opera
+Browsers,Vivaldi,com.vivaldi.Vivaldi
+Communication,Discord,com.discordapp.Discord
+Communication,Slack,com.slack.Slack
+Communication,thunderbird,
+Dev Tools,Bottles,com.usebottles.bottles
+Dev Tools,Boxes,org.gnome.Boxes
+Dev Tools,Microsoft Visual Studio Code,com.visualstudio.code
+Dev Tools,PyCharm,com.jetbrains.PyCharm-Community
+Gaming,lutris,net.lutris.Lutris
+Gaming,ProtonUp-Qt,net.davidotek.pupgui2
+Gaming,steam,
+Multimedia,audacity,
+Multimedia,GIMP,org.gimp.GIMP
+Multimedia,mpv,
+Multimedia,obs-studio,
+Multimedia,vlc,
+Office Tools,libreoffice,
+Office Tools,OnlyOffice,org.onlyoffice.desktopeditors
+Utilities,gparted,
+Utilities,htop,
+Utilities,neofetch,
+Utilities,qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients bridge-utils virt-manager ovmf,

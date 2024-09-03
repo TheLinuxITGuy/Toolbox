@@ -1,6 +1,6 @@
 #!/bin/bash
 
-APP_NAME="rhythmbox"
+APP_NAME="powertop"
 NALA_CMD="nala"
 
 # Function to display error messages and exit the script
@@ -12,7 +12,7 @@ function error_exit {
 # Header
 echo -e "\033[0;32m====================================="
 echo -e "\033[1;32mThe Linux IT Guy - Linux Mint Scripts"
-echo -e "\033[1;32mInstalling $APP_NAME"
+echo -e "\033[1;32mRemoving $APP_NAME"
 echo -e "\033[0;32m=====================================\033[0m"
 
 # Check if Nala is installed
@@ -28,17 +28,13 @@ fi
 echo "Updating package list with Nala..."
 sudo nala update -qq || error_exit "Failed to update package list with Nala."
 
-# Check if the app is already installed
-if ! dpkg -l | grep -qw $APP_NAME; then
-    echo "$APP_NAME is not installed. Installing now..."
-    # Install the app
-    sudo nala install -y $APP_NAME || error_exit "Failed to install $APP_NAME. Please check your system settings or internet connection."
+# Check if the app is installed
+if command -v $APP_NAME &> /dev/null; then
+    echo "$APP_NAME is installed. Removing now..."
+    # Remove the app
+    sudo nala remove -y $APP_NAME || error_exit "Failed to remove $APP_NAME. Please check your system settings."
 else
-    echo "$APP_NAME is already installed. Skipping installation."
+    echo "$APP_NAME is not installed. Skipping removal."
 fi
 
-# Install any missing dependencies and finish configuring the package
-echo "Installing missing dependencies..."
-sudo nala install -f -y || error_exit "Failed to install missing dependencies."
-
-echo "$APP_NAME has been installed successfully."
+echo "$APP_NAME has been successfully removed or was not present."

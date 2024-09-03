@@ -1,33 +1,35 @@
 #!/bin/bash
 
-APP_NAME="tlp tlp-rdw"
+APP_NAMES="tlp tlp-rdw"
 NALA_CMD="nala"
 
 echo -e "\033[0;32m====================================="
 echo -e "\033[1;32mThe Linux IT Guy - Linux Mint Scripts"
-echo -e "\033[1;32mInstalling $APP_NAME"
+echo -e "\033[1;32mInstalling $APP_NAMES"
 echo -e "\033[0;32m=====================================\033[0m"
 
 # Check if Nala is installed
-if ! command -v $NALA_CMD &> /dev/null
-then
+if ! command -v $NALA_CMD &> /dev/null; then
     echo "Nala is not installed. Installing now..."
-    sudo apt update
-    sudo apt install -y nala
+    sudo apt update -y &> /dev/null
+    sudo apt install -y nala &> /dev/null
 fi
 
-# Check if the app is already installed
-if ! command -v $APP_NAME &> /dev/null
-then
-    echo "$APP_NAME is not installed. Installing now..."
-    # Update the package database
-    sudo nala update
-    # Install the app
-    sudo nala install -y $APP_NAME
-    # Install any missing dependencies and finish configuring the package
-    sudo nala install -f -y
-    sudo systemctl enable tlp
-    sudo systemctl start tlp
-else
-    echo "$APP_NAME is already installed. Skipping installation."
-fi
+# Update the package list using Nala
+echo "Updating package list..."
+sudo nala update -y &> /dev/null
+
+# Check if the apps are installed
+for APP in $APP_NAMES; do
+    if ! dpkg -l | grep -qw $APP; then
+        echo "$APP is not installed. Installing now..."
+        sudo nala install -y $APP &> /dev/null
+    else
+        echo "$APP is already installed. Skipping installation."
+    fi
+done
+
+# Enable and start tlp service
+echo "Configuring and starting TLP..."
+sudo systemctl enable tlp
+sudo systemctl start tlp

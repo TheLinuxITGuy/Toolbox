@@ -13,7 +13,7 @@ There are two options: Release and Git. Please choose one.
     3. Type: `python3 Main.py`
 2. Select the Application you would like to Install/Remove
     1. If an application is missing that you'd like to install, you can edit the `apps_config.csv` to add more
-    2. Format: `Category,App Name(case sensitive),Flatpak location`
+    2. Format: `Category,AppName(case sensitive),Flatpak location`
 3. Click Run
 
 ### Release method
@@ -25,7 +25,7 @@ There are two options: Release and Git. Please choose one.
     4. Type: `python3 Main.py`
 3. Select the Application you would like to Install/Remove
     1. If an application is missing that you'd like to install, you can edit the `apps_config.csv` to add more
-    2. Format: `Category,App Name(case sensitive),Flatpak location`
+    2. Format: `Category,AppName(case sensitive),Flatpak location`
 4. Click Run
 
 ## Video

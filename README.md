@@ -11,8 +11,10 @@ There are two options: Release and Git. Please choose one.
     1. `git clone https://github.com/TheLinuxITGuy/Linux-Mint-Scripts.git && cd Linux-Mint-Scripts`
     2. Type: `chmod u+x ./*.*`
     3. Type: `python3 Main.py`
-4. Select the Application you would like to Install/Remove
-5. Click Run
+2. Select the Application you would like to Install/Remove
+    1. If an application is missing that you'd like to install, you can edit the `apps_config.csv` to add more
+    2. Format: `Category,App Name(case sensitive),Flatpak location`
+3. Click Run
 
 ### Release method
 1. Download the latest .tar.gz release into your ~/Downloads folder
@@ -21,7 +23,9 @@ There are two options: Release and Git. Please choose one.
     2. Type: `tar -xzf Linux-Mint-Scripts-1.x.tar.gz && cd Linux-Mint-Scripts-1.x` Replace the x with the version you downloaded
     3. Type: `chmod u+x ./*.*`
     4. Type: `python3 Main.py`
-3. Select the Applications you would like to Install/Remove
+3. Select the Application you would like to Install/Remove
+    1. If an application is missing that you'd like to install, you can edit the `apps_config.csv` to add more
+    2. Format: `Category,App Name(case sensitive),Flatpak location`
 4. Click Run
 
 ## Video

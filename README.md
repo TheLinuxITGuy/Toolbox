@@ -35,3 +35,6 @@ There are two options: Release and Git. Please choose one.
 - **apps_config.csv** The config file that specifies the applications to be listed in the GUI for install
 - **Main.py:** GUI that allows you to Install/Remove applications all at once
 - **main.sh:** The script that Installs/Removes the applications selected
+
+## Donate
+https://www.paypal.com/donate/?hosted_button_id=WPTX2BMBARSG2

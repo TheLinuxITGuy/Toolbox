@@ -11,7 +11,8 @@ from gi.repository import Gtk, Gdk
 class SettingsWindow(Gtk.Window):
     def __init__(self, main_window):
         Gtk.Window.__init__(self, title="Settings")
-        self.set_default_size(400, 300)
+        self.set_default_size(380, 120)
+        self.set_resizable(True)
         self.main_window = main_window
         
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)

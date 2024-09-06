@@ -1,13 +1,26 @@
-import gi
-import subprocess
 import csv
+import subprocess
+import sys
 
+# Function to install a module using pip
+def install_module(module_name):
+    subprocess.check_call([sys.executable, "-m", "pip", "install", module_name])
+
+# Check for the 'gi' module and install it if missing
+try:
+    import gi
+except ImportError:
+    print("The 'gi' module is not installed. Installing now...")
+    install_module("pygobject")
+    import gi
+
+# Now you can safely use the 'gi' module
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk
 
 class OurWindow(Gtk.Window):
     def __init__(self):
-        Gtk.Window.__init__(self, title="The Linux IT Guy's Toolbox")
+        Gtk.Window.__init__(self, title="The Linux IT Guy Toolbox")
         Gtk.Window.set_default_size(self, 400, 325)
         Gtk.Window.set_position(self, Gtk.WindowPosition.CENTER)
         Gtk.Window.set_resizable(self, False)
@@ -89,7 +102,7 @@ class OurWindow(Gtk.Window):
             ],
             "System": [
                 ("Update System", "update-system.sh"),
-                ("nala (rank mirrors)", "install-nala.sh"),
+                ("nala (rank mirrors) - Debian-based only", "install-nala.sh"),
                 ("Stacer", "install-stacer.sh"),
                 ("SWAP Fix", "install-swapfix.sh")
             ]

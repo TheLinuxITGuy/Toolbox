@@ -1,31 +1,91 @@
 #!/bin/bash
 
 APP_NAME="stacer"
+APP_NAME_ARCH="stacer-bin"
 NALA_CMD="nala"
+PACMAN_CMD="pacman"
+DNF_CMD="dnf"
 
 echo -e "\033[0;32m====================================="
-echo -e "\033[1;32mThe Linux IT Guy - Linux Mint Scripts"
+echo -e "\033[1;32mThe Linux IT Guy Toolbox'"
 echo -e "\033[1;32mInstalling $APP_NAME"
 echo -e "\033[0;32m=====================================\033[0m"
 
-# Check if Nala is installed
-if ! command -v $NALA_CMD &> /dev/null
-then
-    echo "Nala is not installed. Installing now..."
-    sudo apt update
-    sudo apt install -y nala
-fi
+# Function to install Stacer on Debian/Ubuntu-based systems
+install_nala() {
+    if ! command -v $NALA_CMD &> /dev/null
+    then
+        echo "Nala is not installed. Installing now..."
+        sudo apt update
+        sudo apt install -y nala
+    fi
 
-# Check if the app is already installed
-if ! command -v $APP_NAME &> /dev/null
-then
-    echo "$APP_NAME is not installed. Installing now..."
-    # Update the package database
-    sudo nala update
-    # Install the app
-    sudo nala install -y $APP_NAME
-    # Install any missing dependencies and finish configuring the package
-    sudo nala install -f -y
+    if ! command -v $APP_NAME &> /dev/null
+    then
+        echo "$APP_NAME is not installed. Installing now..."
+        sudo nala update
+        sudo nala install -y $APP_NAME
+        sudo nala install -f -y
+    else
+        echo "$APP_NAME is already installed. Skipping installation."
+    fi
+}
+
+# Function to install Stacer on Arch-based systems
+install_pacman() {
+    if ! command -v $PACMAN_CMD &> /dev/null
+    then
+        echo "Pacman is not installed. Please install it first."
+        exit 1
+    fi
+
+    if ! command -v yay &> /dev/null
+    then
+        echo "Yay is not installed. Installing now..."
+        sudo pacman -Syu --noconfirm
+        sudo pacman -S --noconfirm base-devel git
+        git clone https://aur.archlinux.org/yay.git
+        cd yay
+        makepkg -si --noconfirm
+        cd ..
+        rm -rf yay
+    fi
+
+    if ! command -v $APP_NAME_ARCH &> /dev/null
+    then
+        echo "$APP_NAME_ARCH is not installed. Installing now..."
+        sudo pacman -Syu --noconfirm
+        yay -S --noconfirm $APP_NAME_ARCH
+    else
+        echo "$APP_NAME_ARCH is already installed. Skipping installation."
+    fi
+}
+
+# Function to install Stacer on Fedora-based systems
+install_dnf() {
+    if ! command -v $DNF_CMD &> /dev/null
+    then
+        echo "DNF is not installed. Please install it first."
+        exit 1
+    fi
+
+    if ! command -v $APP_NAME &> /dev/null
+    then
+        echo "$APP_NAME is not installed. Installing now..."
+        sudo dnf upgrade --refresh -y
+        sudo dnf install -y $APP_NAME
+    else
+        echo "$APP_NAME is already installed. Skipping installation."
+    fi
+}
+
+# Detect distribution and install accordingly
+if [ -f /etc/debian_version ]; then
+    install_nala
+elif [ -f /etc/arch-release ]; then
+    install_pacman
+elif [ -f /etc/fedora-release ]; then
+    install_dnf
 else
-    echo "$APP_NAME is already installed. Skipping installation."
+    echo "Unsupported distribution."
 fi

@@ -1,5 +1,5 @@
-# Linux Mint Scripts
-Add and Remove the pre-installed software from Linux Mint with the click of a button
+# The Linux IT Guy's Toolbox
+Add and Remove software from Linux with the click of a button
 
 ![](<Screenshot/Screenshot1.png>)
 
@@ -8,7 +8,7 @@ There are two options: Release and Git. Please choose one.
 
 ### Git method
 1. From a Terminal, clone this project and cd into it: 
-    1. `git clone https://github.com/TheLinuxITGuy/Linux-Mint-Scripts.git && cd Linux-Mint-Scripts`
+    1. `git clone https://github.com/TheLinuxITGuy/The-Linux-IT-Guy-Toolbox.git && cd The-Linux-IT-Guy-Toolbox`
     2. Type: `chmod u+x ./*.*`
     3. Type: `python3 Main.py`
 2. Select the Application you would like to Install/Remove
@@ -20,7 +20,7 @@ There are two options: Release and Git. Please choose one.
 1. Download the latest .tar.gz release into your ~/Downloads folder
 2. Open a Terminal
     1. Type: `cd ~/Downloads`
-    2. Type: `tar -xzf Linux-Mint-Scripts-1.x.tar.gz && cd Linux-Mint-Scripts-1.x` Replace the x with the version you downloaded
+    2. Type: `tar -xzf The-Linux-IT-Guy-Toolbox-1.x.tar.gz && cd The-Linux-IT-Guy-Toolbox-1.x` Replace the x with the version you downloaded
     3. Type: `chmod u+x ./*.*`
     4. Type: `python3 Main.py`
 3. Select the Application you would like to Install/Remove

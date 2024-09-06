@@ -1,4 +1,4 @@
-# The Linux IT Guy's Toolbox
+# The Linux IT Guy Toolbox
 Add and Remove software from Linux with the click of a button
 
 ![](<Screenshot/Screenshot1.png>)

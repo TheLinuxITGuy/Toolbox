@@ -6,6 +6,24 @@ import sys
 def install_module(module_name):
     subprocess.check_call([sys.executable, "-m", "pip", "install", module_name])
 
+# Function to check if a command exists
+def command_exists(command):
+    return subprocess.call(["which", command], stdout=subprocess.PIPE, stderr=subprocess.PIPE) == 0
+
+# Check if the system is Arch-based
+if command_exists("pacman"):
+    print("System is Arch-based.")
+    # Check if pip is installed
+    if not command_exists("pip"):
+        print("pip is not installed. Installing now...")
+        subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "python-pip"])
+    # Check if pygobject is installed
+    if not command_exists("python-gi"):
+        print("pygobject is not installed. Installing now...")
+        subprocess.check_call(["sudo", "pacman", "-S", "--noconfirm", "python-gobject"])
+else:
+    print("System is not Arch-based.")
+
 # Check for the 'gi' module and install it if missing
 try:
     import gi

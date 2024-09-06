@@ -1,7 +1,7 @@
 # The Linux IT Guy Toolbox
 Add and Remove software from Linux with the click of a button
 
-![](<Screenshot/Screenshot1.png>)
+![](<Screenshot/Screenshot2.png>)
 
 ## How do I use it?
 There are two options: Release and Git. Please choose one.

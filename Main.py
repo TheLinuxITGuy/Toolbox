@@ -39,27 +39,41 @@ from gi.repository import Gtk
 class OurWindow(Gtk.Window):
     def __init__(self):
         Gtk.Window.__init__(self, title="The Linux IT Guy Toolbox")
-        Gtk.Window.set_default_size(self, 400, 325)
+        Gtk.Window.set_default_size(self, 400, 700)
         Gtk.Window.set_position(self, Gtk.WindowPosition.CENTER)
         Gtk.Window.set_resizable(self, False)
 
+        vbox_main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.add(vbox_main)
+
         notebook = Gtk.Notebook()
-        self.add(notebook)
+        vbox_main.pack_start(notebook, True, True, 0)
+
+        # Create a scrolled window for each tab
+        scrolled_window_install = Gtk.ScrolledWindow()
+        scrolled_window_install.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scrolled_window_remove = Gtk.ScrolledWindow()
+        scrolled_window_remove.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scrolled_window_admin = Gtk.ScrolledWindow()
+        scrolled_window_admin.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
 
         # Install tab
         install_tab = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         install_tab.set_border_width(10)
-        notebook.append_page(install_tab, Gtk.Label(label="Install"))
+        scrolled_window_install.add(install_tab)
+        notebook.append_page(scrolled_window_install, Gtk.Label(label="Install"))
 
         # Remove tab
         remove_tab = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         remove_tab.set_border_width(10)
-        notebook.append_page(remove_tab, Gtk.Label(label="Remove"))
+        scrolled_window_remove.add(remove_tab)
+        notebook.append_page(scrolled_window_remove, Gtk.Label(label="Remove"))
 
         # Administration tab
         admin_tab = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         admin_tab.set_border_width(10)
-        notebook.append_page(admin_tab, Gtk.Label(label="Administration"))
+        scrolled_window_admin.add(admin_tab)
+        notebook.append_page(scrolled_window_admin, Gtk.Label(label="Administration"))
 
         self.install_checkboxes = []
         self.remove_checkboxes = []
@@ -139,41 +153,17 @@ class OurWindow(Gtk.Window):
                 check_button.connect("toggled", self.on_check_button_toggled)
                 self.admin_checkboxes.append((check_button, script))
 
-        # Run and Quit buttons for Install tab
-        hbox_install = Gtk.Box(spacing=6)
-        install_tab.pack_start(hbox_install, False, False, 0)
+        # Run and Quit buttons
+        hbox_buttons = Gtk.Box(spacing=6)
+        vbox_main.pack_start(hbox_buttons, False, False, 0)
 
-        run_button_install = Gtk.Button(label="Run")
-        run_button_install.connect("clicked", self.on_run_button_clicked)
-        hbox_install.pack_start(run_button_install, True, True, 0)
+        run_button = Gtk.Button(label="Run")
+        run_button.connect("clicked", self.on_run_button_clicked)
+        hbox_buttons.pack_start(run_button, True, True, 0)
 
-        quit_button_install = Gtk.Button(label="Quit")
-        quit_button_install.connect("clicked", Gtk.main_quit)
-        hbox_install.pack_start(quit_button_install, True, True, 0)
-
-        # Run and Quit buttons for Remove tab
-        hbox_remove = Gtk.Box(spacing=6)
-        remove_tab.pack_start(hbox_remove, False, False, 0)
-
-        run_button_remove = Gtk.Button(label="Run")
-        run_button_remove.connect("clicked", self.on_run_button_clicked)
-        hbox_remove.pack_start(run_button_remove, True, True, 0)
-
-        quit_button_remove = Gtk.Button(label="Quit")
-        quit_button_remove.connect("clicked", Gtk.main_quit)
-        hbox_remove.pack_start(quit_button_remove, True, True, 0)
-
-        # Run and Quit buttons for Administration tab
-        hbox_admin = Gtk.Box(spacing=6)
-        admin_tab.pack_start(hbox_admin, False, False, 0)
-
-        run_button_admin = Gtk.Button(label="Run")
-        run_button_admin.connect("clicked", self.on_run_button_clicked)
-        hbox_admin.pack_start(run_button_admin, True, True, 0)
-
-        quit_button_admin = Gtk.Button(label="Quit")
-        quit_button_admin.connect("clicked", Gtk.main_quit)
-        hbox_admin.pack_start(quit_button_admin, True, True, 0)
+        quit_button = Gtk.Button(label="Quit")
+        quit_button.connect("clicked", Gtk.main_quit)
+        hbox_buttons.pack_start(quit_button, True, True, 0)
 
     def on_check_button_toggled(self, button):
         if button.get_active():

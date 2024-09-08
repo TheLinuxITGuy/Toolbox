@@ -55,11 +55,7 @@ if ! command -v flatpak &> /dev/null; then
     esac
 fi
 
-# Function to enable Multilib on Arch
-# enable_multilib() {
-
-# }
-
+flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
 if [ "$ACTION" == "install" ]; then
     # Check if the app is already installed

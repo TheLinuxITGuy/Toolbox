@@ -23,7 +23,7 @@ install_nala() {
     then
         echo "$APP_NAME is not installed. Installing now..."
         sudo nala update
-        sudo nala install git cmake gcc g++ libpci-dev libx11-dev libwayland-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
+        sudo nala install -y git cmake gcc g++ libpci-dev libx11-dev libwayland-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
         sudo nala install -f -y
 
         git clone https://github.com/fastfetch-cli/fastfetch.git

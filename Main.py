@@ -135,8 +135,8 @@ class OurWindow(Gtk.Window):
             "System": [
                 ("Update System", "update-system.sh"),
                 ("nala (rank mirrors) - Debian-based only", "install-nala.sh"),
-                ("Stacer", "install-stacer.sh"),
-                ("SWAP Fix", "install-swapfix.sh")
+                ("Stacer", "install-stacer.sh"),("SWAP Fix", "install-swapfix.sh"),
+                ("Fastfetch", "install-fastfetch.sh")
             ]
         }
 

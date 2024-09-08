@@ -20,7 +20,7 @@ Multimedia,GIMP,org.gimp.GIMP
 Multimedia,mpv,
 Multimedia,obs-studio,
 Multimedia,vlc,
-Office Tools,libreoffice,
+Office Tools,libreoffice*,
 Office Tools,OnlyOffice,org.onlyoffice.desktopeditors
 Utilities,gparted,
 Utilities,htop,

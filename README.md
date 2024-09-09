@@ -12,7 +12,6 @@ Add and Remove software on Linux with the click of a button
 ![Static Badge](https://img.shields.io/badge/Fedora-%231A365D?style=for-the-badge&logo=fedora&logoColor=%23E9FC12)
 
 ## 🛠️ Install
-There are two options: Git (preferred) and Release
 
 ### Git method
 1. From a Terminal, clone this project, cd into it, and run: 
@@ -21,16 +20,6 @@ There are two options: Git (preferred) and Release
     1. If an application is missing that you'd like to install, you can edit the `apps_config.csv` to add more
     2. Format: `Category,AppName(case sensitive),Flatpak location`
 3. Click Run
-
-### Release method
-1. Download the latest .tar.gz release into your ~/Downloads folder
-2. Open a Terminal
-    1. Type: `cd ~/Downloads`
-    2. Type: `tar -xzf The-Linux-IT-Guy-Toolbox-1.x.tar.gz && cd The-Linux-IT-Guy-Toolbox-1.x && python3 Main.py` Replace the x with the version you downloaded
-3. Select the Application you would like to Install/Remove
-    1. If an application is missing that you'd like to install, you can edit the `apps_config.csv` to add more
-    2. Format: `Category,AppName(case sensitive),Flatpak location`
-4. Click Run
 
 ## 🎥 Video
 [![Video](https://img.youtube.com/vi/PJytFBO3seM/maxresdefault.jpg)](https://youtu.be/PJytFBO3seM)

@@ -11,7 +11,7 @@
 - **Install Applications**: Easily install a variety of applications categorized by their use.
 - **Remove Applications**: Quickly remove unwanted applications.
 - **Administration**: Manage power settings, update your system, and more.
-- **Cross-Distribution Support**: Works on Debian-based, Arch-based, and Fedora-based distributions.
+- **Cross-Distribution Support**: Works on Arch-based, Debian-based, and Fedora-based distributions.
 - **Automatic Dependency Installation**: Checks for and installs necessary dependencies.
 
 ## 🛠️ Install

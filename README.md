@@ -2,7 +2,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/TheLinuxITGuy/The-Linux-IT-Guy-Toolbox?style=for-the-badge&labelColor=%231A365D&color=%23E9FC12)
 ![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TheLinuxITGuy/The-Linux-IT-Guy-Toolbox/total?style=for-the-badge&labelColor=%231A365D&color=%23E9FC12)
 
-![Preview](Screenshot/Screenshot2.png)
+![Preview](Screenshot/Screenshot3.png)
 
 Add and Remove software on Linux with the click of a button
 

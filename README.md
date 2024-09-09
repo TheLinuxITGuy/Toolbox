@@ -12,7 +12,7 @@ Add and Remove software on Linux with the click of a button
 ![Static Badge](https://img.shields.io/badge/Fedora-%231A365D?style=for-the-badge&logo=fedora&logoColor=%23E9FC12)
 
 ## 🛠️ Install
-There are two options: Release and Git. Please choose one.
+There are two options: Git (preferred) and Release
 
 ### Git method
 1. From a Terminal, clone this project, cd into it, and run: 

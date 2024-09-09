@@ -4,12 +4,15 @@
 
 ![Preview](Screenshot/Screenshot3.png)
 
-Add and Remove software on Linux with the click of a button
+**The Linux IT Guy Toolbox** is a Python script that provides a user-friendly GUI for managing various applications and system settings on your Linux machine. Whether you need to install or remove applications, manage power settings, or perform system updates, this toolbox has got you covered! 🚀
 
-## Supported Distros
-![Static Badge](https://img.shields.io/badge/Debian-%231A365D?style=for-the-badge&logo=debian&logoColor=%23E9FC12)
-![Static Badge](https://img.shields.io/badge/Arch-%231A365D?style=for-the-badge&logo=arch%20linux&logoColor=%23E9FC12)
-![Static Badge](https://img.shields.io/badge/Fedora-%231A365D?style=for-the-badge&logo=fedora&logoColor=%23E9FC12)
+## ✨ Features 
+
+- **Install Applications**: Easily install a variety of applications categorized by their use.
+- **Remove Applications**: Quickly remove unwanted applications.
+- **Administration**: Manage power settings, update your system, and more.
+- **Cross-Distribution Support**: Works on Debian-based, Arch-based, and Fedora-based distributions.
+- **Automatic Dependency Installation**: Checks for and installs necessary dependencies.
 
 ## 🛠️ Install
 
@@ -21,13 +24,23 @@ Add and Remove software on Linux with the click of a button
     2. Format: `Category,AppName(case sensitive),Flatpak location`
 3. Click Run
 
+## 🖥️ Usage 
+
+1. **Install Tab**: Select the applications you want to install from the categorized list and click "Run".
+2. **Remove Tab**: Select the applications you want to remove and click "Run".
+3. **Administration Tab**: Manage power settings, update your system, and more by selecting the desired options and clicking "Run".
+
+## ⚙️ Configuration 
+
+The applications and their categories are defined in the `apps_config.csv` file. You can customize this file to add or remove applications as needed.
+
 ## 🎥 Video
 [![Video](https://img.youtube.com/vi/PJytFBO3seM/maxresdefault.jpg)](https://youtu.be/PJytFBO3seM)
 
-## ✨ What does each script do?
-- **apps_config.csv** The config file that specifies the applications to be listed in the GUI for install
-- **Main.py:** GUI that allows you to Install/Remove applications all at once
-- **main.sh:** The script that Installs/Removes the applications selected
+## 📥 Supported Distros
+![Static Badge](https://img.shields.io/badge/Debian-%231A365D?style=for-the-badge&logo=debian&logoColor=%23E9FC12)
+![Static Badge](https://img.shields.io/badge/Arch-%231A365D?style=for-the-badge&logo=arch%20linux&logoColor=%23E9FC12)
+![Static Badge](https://img.shields.io/badge/Fedora-%231A365D?style=for-the-badge&logo=fedora&logoColor=%23E9FC12)
 
 ## 💖 Donate
 https://www.paypal.com/donate/?hosted_button_id=WPTX2BMBARSG2

@@ -16,7 +16,7 @@
 
 ## 🛠️ Install
 
-1. From a Terminal, clone this project, cd into it, and run: `git clone https://github.com/TheLinuxITGuy/The-Linux-IT-Guy-Toolbox.git && cd The-Linux-IT-Guy-Toolbox && python3 Main.py`
+- From a Terminal, clone this project, cd into it, and run: `git clone https://github.com/TheLinuxITGuy/The-Linux-IT-Guy-Toolbox.git && cd The-Linux-IT-Guy-Toolbox && python3 Main.py`
 
 ## 🖥️ Usage 
 
@@ -32,8 +32,8 @@ The applications and their categories are defined in the `apps_config.csv` file.
 [![Video](https://img.youtube.com/vi/PJytFBO3seM/maxresdefault.jpg)](https://youtu.be/PJytFBO3seM)
 
 ## 📥 Supported Distros
-![Static Badge](https://img.shields.io/badge/Debian-%231A365D?style=for-the-badge&logo=debian&logoColor=%23E9FC12)
 ![Static Badge](https://img.shields.io/badge/Arch-%231A365D?style=for-the-badge&logo=arch%20linux&logoColor=%23E9FC12)
+![Static Badge](https://img.shields.io/badge/Debian-%231A365D?style=for-the-badge&logo=debian&logoColor=%23E9FC12)
 ![Static Badge](https://img.shields.io/badge/Fedora-%231A365D?style=for-the-badge&logo=fedora&logoColor=%23E9FC12)
 
 ## 💖 Donate

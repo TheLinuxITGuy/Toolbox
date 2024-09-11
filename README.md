@@ -1,6 +1,6 @@
 # The Linux IT Guy Toolbox
-![GitHub Release](https://img.shields.io/github/v/release/TheLinuxITGuy/The-Linux-IT-Guy-Toolbox?style=for-the-badge&labelColor=%231A365D&color=%23E9FC12)
-![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TheLinuxITGuy/The-Linux-IT-Guy-Toolbox/total?style=for-the-badge&labelColor=%231A365D&color=%23E9FC12)
+![GitHub Release](https://img.shields.io/github/v/release/TheLinuxITGuy/Toolbox?style=for-the-badge&labelColor=%231A365D&color=%23E9FC12)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TheLinuxITGuy/Toolbox/total?style=for-the-badge&labelColor=%231A365D&color=%23E9FC12)
 
 ![Preview](Screenshot/Screenshot3.png)
 
@@ -16,7 +16,7 @@
 
 ## 🛠️ Install
 
-- To get started, run this command in your terminal: `git clone https://github.com/TheLinuxITGuy/The-Linux-IT-Guy-Toolbox.git && cd The-Linux-IT-Guy-Toolbox && python3 Main.py`
+- To get started, run this command in your terminal: `git clone https://github.com/TheLinuxITGuy/Toolbox.git && cd The-Linux-IT-Guy-Toolbox && python3 Main.py`
 
 ## 🖥️ Usage 
 

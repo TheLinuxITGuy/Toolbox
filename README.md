@@ -16,7 +16,7 @@
 
 ## 🛠️ Install
 
-- To get started, run this command in your terminal: `git clone https://github.com/TheLinuxITGuy/Toolbox.git && cd The-Linux-IT-Guy-Toolbox && python3 Main.py`
+- To get started, run this command in your terminal: `git clone https://github.com/TheLinuxITGuy/Toolbox.git && cd Toolbox && python3 Main.py`
 
 ## 🖥️ Usage 
 

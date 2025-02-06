@@ -4,7 +4,7 @@
 
 ![Preview](Screenshot/Screenshot3.png)
 
-**The Linux IT Guy Toolbox** is a Python script that provides a user-friendly GUI for managing various applications and system settings on your Linux machine. Whether you need to install or remove applications, manage power settings, or perform system updates, this toolbox has got you covered! 🚀
+**The Linux IT Guy Toolbox** is a Python script that provides a user-friendly GUI for managing various applications and system settings on your Linux machine. Easily install or remove applications, manage power settings, or perform system updates with the click of a button! 🚀
 
 ## ✨ Features 
 

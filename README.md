@@ -39,5 +39,5 @@ The applications and their categories are defined in the `apps_config.csv` file.
 ![Static Badge](https://img.shields.io/badge/Debian-%231A365D?style=for-the-badge&logo=debian&logoColor=%23E9FC12)
 ![Static Badge](https://img.shields.io/badge/Fedora-%231A365D?style=for-the-badge&logo=fedora&logoColor=%23E9FC12)
 
-## 💖 Donate
+## 💖 Sponsor
 https://www.paypal.com/donate/?hosted_button_id=WPTX2BMBARSG2

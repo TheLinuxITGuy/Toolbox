@@ -26,6 +26,7 @@ git clone https://github.com/TheLinuxITGuy/Toolbox.git && cd Toolbox && python3 
 1. **Install Tab**: Select the applications you want to install from the categorized list and click "Run".
 2. **Remove Tab**: Select the applications you want to remove and click "Run".
 3. **Administration Tab**: Manage power settings, update your system, and more by selecting the desired options and clicking "Run".
+4. **System Info Tab**: Displays system information.
 
 ## ⚙️ Configuration 
 

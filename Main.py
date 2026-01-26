@@ -369,7 +369,7 @@ class ToolboxWindow(QMainWindow):
         add_row("Shell", os.environ.get("SHELL", "Unknown"))
         add_row("DE/WM", os.environ.get("XDG_CURRENT_DESKTOP", os.environ.get("DESKTOP_SESSION", "Unknown")))
         add_row("CPU", get_cpu_info())
-        add_row("Memory", get_memory_info())
+        #add_row("Memory", get_memory_info())
         add_row("Python", sys.version.split()[0])
 
         self.tabs.addTab(info_widget, "System Info")

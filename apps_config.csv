@@ -16,10 +16,12 @@ Dev Tools,Microsoft Visual Studio Code,com.visualstudio.code
 Dev Tools,PyCharm,com.jetbrains.PyCharm-Community
 Gaming,lutris,net.lutris.Lutris
 Gaming,ProtonUp-Qt,net.davidotek.pupgui2
+Gaming,steam,com.valvesoftware.Steam
 Gaming,steam,
 Multimedia,audacity,
 Multimedia,GIMP,org.gimp.GIMP
 Multimedia,mpv,
+Multimedia,obs-studio,com.obsproject.Studio
 Multimedia,obs-studio,
 Multimedia,vlc,
 Office Tools,libreoffice*,

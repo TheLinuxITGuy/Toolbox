@@ -14,9 +14,36 @@
 - **Cross-Distribution Support**: Works on Arch-based, Debian-based, and Fedora-based distributions.
 - **Automatic Dependency Installation**: Checks for and installs necessary dependencies.
 
+## 📥 Pre-Reqs
+
+<details>
+<summary>Arch</summary>
+
+```
+sudo pacman -Syu git pyside6
+```
+</details>
+
+<details>
+<summary>Debian (Linux Mint)</summary>
+
+```
+sudo apt update && sudo apt install -y git pyside6
+```
+</details>
+
+<details>
+<summary>Fedora Silverblue</summary>
+
+```
+rpm-ostree install python-pyside6
+#use sudo dnf install if running Fedora Workstation.
+```
+</details>
+
 ## 🛠️ Install
 
-- To get started, simply copy and paste this command in your terminal:
+To get started, simply copy and paste this command in your terminal after checking the pre-reqs:
 ```
 git clone https://github.com/TheLinuxITGuy/Toolbox.git && cd Toolbox && python3 Main.py
 ```

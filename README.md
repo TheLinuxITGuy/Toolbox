@@ -37,7 +37,7 @@ sudo apt update && sudo apt install -y git pyside6
 
 ```
 rpm-ostree install python-pyside6
-#use sudo dnf install if running Fedora Workstation.
+#use sudo dnf install python-pyside6 if running Fedora Workstation.
 ```
 </details>
 

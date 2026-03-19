@@ -58,10 +58,12 @@ def install_dependencies():
 
 try:
     from PySide6.QtCore import QThread, Qt, Signal
+    from PySide6.QtGui import QColor, QPalette
     from PySide6.QtWidgets import (
         QApplication,
         QCheckBox,
         QFormLayout,
+        QGridLayout,
         QGroupBox,
         QHBoxLayout,
         QInputDialog,
@@ -81,10 +83,12 @@ except ImportError:
     install_dependencies()
     try:
         from PySide6.QtCore import QThread, Qt, Signal
+        from PySide6.QtGui import QColor, QPalette
         from PySide6.QtWidgets import (
             QApplication,
             QCheckBox,
             QFormLayout,
+            QGridLayout,
             QGroupBox,
             QHBoxLayout,
             QInputDialog,
@@ -120,6 +124,86 @@ class AppEntry:
     def display_name(self):
         suffix = " (flatpak)" if self.is_flatpak else ""
         return f"{self.label}{suffix}"
+
+
+def run_command_capture(command):
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return ""
+
+
+def detect_dark_mode():
+    color_scheme = run_command_capture(["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"])
+    gtk_theme = run_command_capture(["gsettings", "get", "org.gnome.desktop.interface", "gtk-theme"])
+
+    normalized_scheme = color_scheme.strip("'\"").lower()
+    normalized_theme = gtk_theme.strip("'\"").lower()
+
+    if normalized_scheme == "prefer-dark":
+        return True
+    if "dark" in normalized_theme:
+        return True
+
+    if os.environ.get("GTK_THEME", "").lower().endswith(":dark"):
+        return True
+
+    return False
+
+
+def apply_dark_palette(app):
+    app.setStyle("Fusion")
+    palette = QPalette()
+    palette.setColor(QPalette.Window, QColor(45, 45, 48))
+    palette.setColor(QPalette.WindowText, QColor(230, 230, 230))
+    palette.setColor(QPalette.Base, QColor(30, 30, 30))
+    palette.setColor(QPalette.AlternateBase, QColor(45, 45, 48))
+    palette.setColor(QPalette.ToolTipBase, QColor(45, 45, 48))
+    palette.setColor(QPalette.ToolTipText, QColor(230, 230, 230))
+    palette.setColor(QPalette.Text, QColor(230, 230, 230))
+    palette.setColor(QPalette.Button, QColor(53, 53, 53))
+    palette.setColor(QPalette.ButtonText, QColor(230, 230, 230))
+    palette.setColor(QPalette.BrightText, QColor(255, 80, 80))
+    palette.setColor(QPalette.Link, QColor(76, 163, 224))
+    palette.setColor(QPalette.Highlight, QColor(65, 142, 200))
+    palette.setColor(QPalette.HighlightedText, QColor(255, 255, 255))
+    app.setPalette(palette)
+
+    app.setStyleSheet(
+        """
+        QGroupBox {
+            font-weight: bold;
+            border: 1px solid #555;
+            border-radius: 8px;
+            margin-top: 12px;
+            padding-top: 10px;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 12px;
+            padding: 0 4px 0 4px;
+        }
+        QPushButton {
+            padding: 8px 14px;
+            border-radius: 6px;
+        }
+        QTextEdit {
+            border: 1px solid #555;
+            border-radius: 6px;
+        }
+        QTabWidget::pane {
+            border: 1px solid #555;
+            border-radius: 8px;
+        }
+        QTabBar::tab {
+            padding: 8px 16px;
+            margin: 2px;
+        }
+        """
+    )
 
 
 class WorkerThread(QThread):
@@ -185,11 +269,19 @@ class ToolboxWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("The Linux IT Guy Toolbox")
-        self.resize(760, 880)
+        self.resize(860, 920)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
+        main_layout.setSpacing(12)
+
+        header = QLabel("The Linux IT Guy Toolbox")
+        header.setStyleSheet("font-size: 20px; font-weight: 700;")
+        subheader = QLabel("Install apps, remove apps, and run common Linux admin tasks from one place.")
+        subheader.setWordWrap(True)
+        main_layout.addWidget(header)
+        main_layout.addWidget(subheader)
 
         self.tabs = QTabWidget()
         main_layout.addWidget(self.tabs)
@@ -206,9 +298,13 @@ class ToolboxWindow(QMainWindow):
         self.create_system_info_tab()
         self.link_install_remove_checkboxes()
 
+        self.selection_summary = QLabel("No tasks selected.")
+        self.selection_summary.setStyleSheet("font-weight: 600;")
+        main_layout.addWidget(self.selection_summary)
+
         self.log_output = QTextEdit()
         self.log_output.setReadOnly(True)
-        self.log_output.setStyleSheet("background-color: #1e1e1e; color: #00ff00; font-family: Monospace;")
+        self.log_output.setStyleSheet("background-color: #1e1e1e; color: #00ff88; font-family: Monospace;")
         self.log_output.setPlaceholderText("Process logs will appear here...")
 
         log_group = QGroupBox("Process Log")
@@ -218,6 +314,11 @@ class ToolboxWindow(QMainWindow):
         main_layout.addWidget(log_group, stretch=1)
 
         button_layout = QHBoxLayout()
+
+        self.clear_btn = QPushButton("Clear Selection")
+        self.clear_btn.setFixedHeight(40)
+        self.clear_btn.clicked.connect(self.clear_all_selections)
+        button_layout.addWidget(self.clear_btn)
 
         self.run_btn = QPushButton("Run Selected Tasks")
         self.run_btn.setFixedHeight(40)
@@ -230,6 +331,7 @@ class ToolboxWindow(QMainWindow):
         button_layout.addWidget(self.quit_btn)
 
         main_layout.addLayout(button_layout)
+        self.update_selection_summary()
 
     def load_apps_config(self):
         categories = {}
@@ -290,7 +392,29 @@ class ToolboxWindow(QMainWindow):
             ],
         }
 
-    def create_tab_content(self, categories, storage_list):
+    def add_selection_controls(self, parent_layout, checkbox_pairs, title):
+        controls = QHBoxLayout()
+
+        label = QLabel(title)
+        label.setStyleSheet("font-weight: 600;")
+        controls.addWidget(label)
+        controls.addStretch()
+
+        select_all_btn = QPushButton("Select All")
+        select_all_btn.clicked.connect(lambda: self.set_group_checked(checkbox_pairs, True))
+        controls.addWidget(select_all_btn)
+
+        clear_btn = QPushButton("Clear")
+        clear_btn.clicked.connect(lambda: self.set_group_checked(checkbox_pairs, False))
+        controls.addWidget(clear_btn)
+
+        parent_layout.addLayout(controls)
+
+    def create_tab_content(self, categories, storage_list, title):
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        self.add_selection_controls(container_layout, storage_list, title)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         content_widget = QWidget()
@@ -298,29 +422,41 @@ class ToolboxWindow(QMainWindow):
 
         for category, items in categories.items():
             group = QGroupBox(category)
-            group_layout = QVBoxLayout()
+            group_layout = QGridLayout()
+            row = 0
+            column = 0
             for entry in items:
                 chk = QCheckBox(entry.display_name)
                 if entry.notes:
                     chk.setToolTip(entry.notes)
-                group_layout.addWidget(chk)
+                chk.toggled.connect(self.update_selection_summary)
+                group_layout.addWidget(chk, row, column)
                 storage_list.append((chk, entry))
+                column += 1
+                if column > 1:
+                    column = 0
+                    row += 1
             group.setLayout(group_layout)
             content_layout.addWidget(group)
 
         content_layout.addStretch()
         scroll.setWidget(content_widget)
-        return scroll
+        container_layout.addWidget(scroll)
+        return container
 
     def create_install_tab(self):
-        widget = self.create_tab_content(self.apps_data, self.install_checkboxes)
+        widget = self.create_tab_content(self.apps_data, self.install_checkboxes, "Select apps to install")
         self.tabs.addTab(widget, "Install")
 
     def create_remove_tab(self):
-        widget = self.create_tab_content(self.apps_data, self.remove_checkboxes)
+        widget = self.create_tab_content(self.apps_data, self.remove_checkboxes, "Select apps to remove")
         self.tabs.addTab(widget, "Remove")
 
     def create_admin_tab(self):
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        self.add_selection_controls(container_layout, self.admin_checkboxes, "Select admin tasks")
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         content_widget = QWidget()
@@ -330,13 +466,15 @@ class ToolboxWindow(QMainWindow):
             group_layout = QVBoxLayout()
             for option_name, script_name in options:
                 chk = QCheckBox(option_name)
+                chk.toggled.connect(self.update_selection_summary)
                 group_layout.addWidget(chk)
                 self.admin_checkboxes.append((chk, script_name))
             group.setLayout(group_layout)
             content_layout.addWidget(group)
         content_layout.addStretch()
         scroll.setWidget(content_widget)
-        self.tabs.addTab(scroll, "Administration")
+        container_layout.addWidget(scroll)
+        self.tabs.addTab(container, "Administration")
 
     def create_system_info_tab(self):
         info_widget = QWidget()
@@ -401,10 +539,35 @@ class ToolboxWindow(QMainWindow):
         add_row("Uptime", get_uptime())
         add_row("Shell", os.environ.get("SHELL", "Unknown"))
         add_row("DE/WM", os.environ.get("XDG_CURRENT_DESKTOP", os.environ.get("DESKTOP_SESSION", "Unknown")))
+        add_row("Dark Mode", "Enabled" if detect_dark_mode() else "Disabled")
         add_row("CPU", get_cpu_info())
         add_row("Python", sys.version.split()[0])
 
         self.tabs.addTab(info_widget, "System Info")
+
+    def set_group_checked(self, checkbox_pairs, checked):
+        for item in checkbox_pairs:
+            checkbox = item[0]
+            checkbox.setChecked(checked)
+        self.update_selection_summary()
+
+    def clear_all_selections(self):
+        self.set_group_checked(self.install_checkboxes, False)
+        self.set_group_checked(self.remove_checkboxes, False)
+        self.set_group_checked(self.admin_checkboxes, False)
+
+    def update_selection_summary(self):
+        install_count = sum(1 for chk, _ in self.install_checkboxes if chk.isChecked())
+        remove_count = sum(1 for chk, _ in self.remove_checkboxes if chk.isChecked())
+        admin_count = sum(1 for chk, _ in self.admin_checkboxes if chk.isChecked())
+        total = install_count + remove_count + admin_count
+
+        if total == 0:
+            self.selection_summary.setText("No tasks selected.")
+        else:
+            self.selection_summary.setText(
+                f"Selected tasks: {total} total — {install_count} install, {remove_count} remove, {admin_count} admin"
+            )
 
     def link_install_remove_checkboxes(self):
         install_map = {entry.label: chk for chk, entry in self.install_checkboxes}
@@ -467,17 +630,15 @@ class ToolboxWindow(QMainWindow):
             QMessageBox.information(self, "No Tasks", "Please select at least one task.")
             return
 
-        pwd, ok = QInputDialog.getText(
-            self,
-            "Sudo Authentication",
-            "Enter your sudo password to proceed:\n(This is required for installations and system tasks)",
-            QLineEdit.Password,
-        )
+        prompt = "Enter your sudo password to proceed:\n(This is required for installations and system tasks)"
+        pwd, ok = QInputDialog.getText(self, "Sudo Authentication", prompt, QLineEdit.Password)
         if not ok:
             return
 
         self.run_btn.setEnabled(False)
+        self.clear_btn.setEnabled(False)
         self.log_output.clear()
+        self.log_output.append(f"Queued {len(tasks)} task(s)...")
 
         self.worker = WorkerThread(tasks, sudo_password=pwd)
         self.worker.log_signal.connect(self.append_log)
@@ -491,11 +652,14 @@ class ToolboxWindow(QMainWindow):
 
     def on_tasks_finished(self):
         self.run_btn.setEnabled(True)
+        self.clear_btn.setEnabled(True)
         QMessageBox.information(self, "Completed", "All selected tasks executed.")
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    if detect_dark_mode():
+        apply_dark_palette(app)
     window = ToolboxWindow()
     window.show()
     sys.exit(app.exec())

@@ -4,7 +4,9 @@
 
 ![Preview](Screenshot/Screenshot4.png)
 
-**The Linux IT Guy Toolbox** is a Python GUI for installing apps, removing apps, and running a few practical Linux admin tasks without memorizing package names or Flatpak IDs.
+**The Linux IT Guy Toolbox** is a Python GUI for installing apps, removing apps, and running practical Linux admin tasks without memorizing package names or Flatpak IDs.
+
+As of **2026-03-19**, **Henry** — my OpenClaw agent — is actively helping develop and improve this project.
 
 ## What it does
 
@@ -13,6 +15,15 @@
 - Run common admin helpers like system updates, Bluetooth toggles, and TLP setup
 - Show lightweight local system information
 - Work across Debian-based, Arch-based, and Fedora-based distributions
+
+## Recent improvements
+
+- More reliable native package detection across `apt`, `pacman`, and `dnf`
+- Better separation between user-facing labels, package names, and Flatpak IDs
+- Improved Flatpak handling with Flathub support
+- GNOME dark mode detection and a matching dark UI palette
+- Better selection controls, task summary, and general UI polish
+- More robust path handling when launching the app from outside the project directory
 
 ## Requirements
 
@@ -61,13 +72,21 @@ Current columns:
 - `Exec Name`
 - `Notes`
 
-That structure makes it easier to keep user-facing labels separate from package names and Flatpak IDs.
+This structure keeps user-facing labels separate from package-manager package names and Flatpak IDs, which makes the catalog easier to maintain as the project grows.
 
 ## Notes
 
 - Flatpak installs use the Flathub remote.
-- Native package install detection now uses package-manager queries instead of guessing from executable names.
+- Native package install detection uses package-manager queries instead of guessing from executable names.
 - The GUI resolves files relative to `Main.py`, so it does not depend on your current working directory.
+- Some package availability may vary by distro or repository configuration.
+- Most install and administration tasks require sudo access.
+
+## Known limitations
+
+- Some applications are available as native packages on one distro but are better handled as Flatpaks on another.
+- A few administration actions are distro-specific by design.
+- Optional packages may not exist in every default repository.
 
 ## Video
 [![Video](https://img.youtube.com/vi/PJytFBO3seM/maxresdefault.jpg)](https://youtu.be/PJytFBO3seM)

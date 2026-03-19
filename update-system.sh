@@ -1,59 +1,35 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-NALA_CMD="nala"
-FLATPAK_CMD="flatpak"
-PACMAN_CMD="pacman"
-DNF_CMD="dnf"
+printf '[0;32m=====================================\n'
+printf '[1;32mThe Linux IT Guy Toolbox\n'
+printf '[1;32mUpdating System\n'
+printf '[0;32m=====================================[0m\n'
 
-echo -e "\033[0;32m====================================="
-echo -e "\033[1;32mThe Linux IT Guy Toolbox"
-echo -e "\033[1;32mUpdating System"
-echo -e "\033[0;32m=====================================\033[0m"
-
-# Function to update Flatpak
 update_flatpak() {
-    if command -v $FLATPAK_CMD &> /dev/null
-    then
+    if command -v flatpak >/dev/null 2>&1; then
         echo "Updating Flatpak..."
         sudo flatpak update -y
     else
-        echo "Flatpak is not installed."
+        echo "Flatpak is not installed. Skipping Flatpak update."
     fi
 }
 
-# Function to update system using Nala (Debian/Ubuntu-based)
-update_nala() {
-    if ! command -v $NALA_CMD &> /dev/null
-    then
-        echo "Nala is not installed. Installing now..."
-        sudo apt update
-        sudo apt install -y nala
+if command -v apt-get >/dev/null 2>&1; then
+    if command -v nala >/dev/null 2>&1; then
+        sudo nala update
+        sudo nala upgrade -y
+    else
+        sudo apt-get update
+        sudo apt-get upgrade -y
     fi
-    sudo nala update && sudo nala upgrade -y
-}
-
-# Function to update system using Pacman (Arch-based)
-update_pacman() {
-    echo "Updating system using Pacman..."
+elif command -v pacman >/dev/null 2>&1; then
     sudo pacman -Syu --noconfirm
-}
-
-# Function to update system using DNF (Fedora-based)
-update_dnf() {
-    echo "Updating system using DNF..."
+elif command -v dnf >/dev/null 2>&1; then
     sudo dnf upgrade --refresh -y
-}
-
-# Detect distribution and update accordingly
-if [ -f /etc/debian_version ]; then
-    update_nala
-elif [ -f /etc/arch-release ]; then
-    update_pacman
-elif [ -f /etc/fedora-release ]; then
-    update_dnf
 else
     echo "Unsupported distribution."
+    exit 1
 fi
 
-# Update Flatpak
 update_flatpak

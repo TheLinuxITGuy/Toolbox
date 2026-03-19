@@ -1,48 +1,23 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo -e "\033[0;32m====================================="
-echo -e "\033[1;32mThe Linux IT Guy Toolbox'"
-echo -e "\033[1;32mApplying SWAP Fix"
-echo -e "\033[0;32m=====================================\033[0m"
+printf '[0;32m=====================================\n'
+printf '[1;32mThe Linux IT Guy Toolbox\n'
+printf '[1;32mApplying SWAP Fix\n'
+printf '[0;32m=====================================[0m\n'
 
-# Function to update swappiness value
-update_swappiness() {
-    echo "vm.swappiness=10" | sudo tee -a /etc/sysctl.conf
-    echo "The swappiness value has been updated. It is recommended to restart your system for the changes to take effect."
-    read -p "Do you want to restart now? (y/n): " choice
-
-    if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
-        sudo reboot
+if command -v sysctl >/dev/null 2>&1; then
+    if [[ -f /etc/arch-release ]]; then
+        target_file="/etc/sysctl.d/99-swappiness.conf"
     else
-        echo "Please remember to restart your system later to apply the changes."
+        target_file="/etc/sysctl.d/99-toolbox-swappiness.conf"
     fi
-}
 
-# Function to update swappiness value in Arch
-# https://wiki.archlinux.org/title/Swap#Swappiness
-# https://arcolinuxforum.com/viewtopic.php?t=1480
-update_swappiness_arch() {
-    echo "vm.swappiness=10" | sudo tee -a /etc/sysctl.d/99-swappiness.conf
-    echo "The swappiness value has been updated. It is recommended to restart your system for the changes to take effect."
-    read -p "Do you want to restart now? (y/n): " choice
-
-    if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
-        sudo reboot
-    else
-        echo "Please remember to restart your system later to apply the changes."
-    fi
-}
-
-# Detect distribution and update accordingly
-if [ -f /etc/debian_version ]; then
-    echo "Detected Debian/Ubuntu-based distribution."
-    update_swappiness
-elif [ -f /etc/arch-release ]; then
-    echo "Detected Arch-based distribution."
-    update_swappiness_arch
-elif [ -f /etc/fedora-release ]; then
-    echo "Detected Fedora-based distribution."
-    update_swappiness
+    echo "Writing vm.swappiness=10 to ${target_file}..."
+    printf 'vm.swappiness=10\n' | sudo tee "$target_file" >/dev/null
+    sudo sysctl --system >/dev/null
+    echo "SWAP fix applied. A reboot is optional, but not required."
 else
-    echo "Unsupported distribution."
+    echo "sysctl is not available on this system."
+    exit 1
 fi

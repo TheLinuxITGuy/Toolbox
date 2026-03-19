@@ -1,19 +1,20 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-APP_NAME="nala"
-NALA_CMD="nala"
+printf '[0;32m=====================================\n'
+printf '[1;32mThe Linux IT Guy Toolbox\n'
+printf '[1;32mConfigure nala mirrors\n'
+printf '[0;32m=====================================[0m\n'
 
-echo -e "\033[0;32m====================================="
-echo -e "\033[1;32mThe Linux IT Guy Toolbox'"
-echo -e "\033[1;32mInstalling $APP_NAME"
-echo -e "\033[0;32m=====================================\033[0m"
-
-# Check if Nala is installed
-if ! command -v $NALA_CMD &> /dev/null
-then
-    echo "Nala is not installed. Installing now..."
-    sudo apt update
-    sudo apt install -y nala
+if ! command -v apt-get >/dev/null 2>&1; then
+    echo "This task is intended for Debian-based systems only."
+    exit 1
 fi
 
-    sudo nala fetch #--auto
+if ! command -v nala >/dev/null 2>&1; then
+    echo "Installing nala..."
+    sudo apt-get update
+    sudo apt-get install -y nala
+fi
+
+sudo nala fetch --auto

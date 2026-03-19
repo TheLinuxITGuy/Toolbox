@@ -1,31 +1,31 @@
-Category,App Name,Flatpak Location
-Browsers,Brave Browser,com.brave.Browser
-Browsers,Google Chrome,com.google.Chrome
-Browsers,firefox,
-Browsers,Microsoft Edge,com.microsoft.Edge
-Browsers,Opera,com.opera.Opera
-Browsers,Vivaldi,com.vivaldi.Vivaldi
-Browsers,Zen,app.zen_browser.zen
-Communication,Discord,com.discordapp.Discord
-Communication,Signal,org.signal.Signal
-Communication,Slack,com.slack.Slack
-Communication,thunderbird,
-Dev Tools,Bottles,com.usebottles.bottles
-Dev Tools,Boxes,org.gnome.Boxes
-Dev Tools,Microsoft Visual Studio Code,com.visualstudio.code
-Dev Tools,PyCharm,com.jetbrains.PyCharm-Community
-Gaming,lutris,net.lutris.Lutris
-Gaming,ProtonUp-Qt,net.davidotek.pupgui2
-Gaming,steam,com.valvesoftware.Steam
-Gaming,steam,
-Multimedia,audacity,
-Multimedia,GIMP,org.gimp.GIMP
-Multimedia,mpv,
-Multimedia,obs-studio,com.obsproject.Studio
-Multimedia,obs-studio,
-Multimedia,vlc,
-Office Tools,libreoffice*,
-Office Tools,OnlyOffice,org.onlyoffice.desktopeditors
-Utilities,gparted,
-Utilities,htop,
-Utilities,LocalSend,org.localsend.localsend_app
+Category,Label,Package Name,Flatpak ID,Exec Name,Notes
+Browsers,Brave Browser,,com.brave.Browser,brave,
+Browsers,Google Chrome,,com.google.Chrome,google-chrome,
+Browsers,Firefox,firefox,,firefox,
+Browsers,Microsoft Edge,,com.microsoft.Edge,microsoft-edge,
+Browsers,Opera,,com.opera.Opera,opera,
+Browsers,Vivaldi,,com.vivaldi.Vivaldi,vivaldi,
+Browsers,Zen,,app.zen_browser.zen,zen-browser,
+Communication,Discord,,com.discordapp.Discord,discord,
+Communication,Signal,,org.signal.Signal,signal-desktop,
+Communication,Slack,,com.slack.Slack,slack,
+Communication,Thunderbird,thunderbird,,thunderbird,
+Dev Tools,Bottles,,com.usebottles.bottles,bottles,
+Dev Tools,Boxes,,org.gnome.Boxes,gnome-boxes,
+Dev Tools,Visual Studio Code,,com.visualstudio.code,code,
+Dev Tools,PyCharm Community,,com.jetbrains.PyCharm-Community,pycharm-community,
+Gaming,Lutris,,net.lutris.Lutris,lutris,
+Gaming,ProtonUp-Qt,,net.davidotek.pupgui2,protonup-qt,
+Gaming,Steam,steam,,steam,Native package
+Gaming,Steam,,com.valvesoftware.Steam,steam,Flatpak
+Multimedia,Audacity,audacity,,audacity,
+Multimedia,GIMP,,org.gimp.GIMP,gimp,
+Multimedia,mpv,mpv,,mpv,
+Multimedia,OBS Studio,obs-studio,,obs,
+Multimedia,OBS Studio,,com.obsproject.Studio,obs,
+Multimedia,VLC,vlc,,vlc,
+Office Tools,LibreOffice,libreoffice,,libreoffice,
+Office Tools,OnlyOffice,,org.onlyoffice.desktopeditors,onlyoffice-desktopeditors,
+Utilities,GParted,gparted,,gparted,
+Utilities,htop,htop,,htop,
+Utilities,LocalSend,,org.localsend.localsend_app,localsend,

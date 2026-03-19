@@ -1,17 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo -e "\033[0;32m====================================="
-echo -e "\033[1;32mThe Linux IT Guy Toolbox"
-echo -e "\033[1;32mDisable Bluetooth"
-echo -e "\033[0;32m=====================================\033[0m"
+printf '[0;32m=====================================\n'
+printf '[1;32mThe Linux IT Guy Toolbox\n'
+printf '[1;32mDisable Bluetooth\n'
+printf '[0;32m=====================================[0m\n'
 
-# Block Bluetooth
-rfkill block bluetooth
+sudo rfkill block bluetooth
+sudo systemctl disable --now bluetooth.service
 
-# Stop Bluetooth service
-sudo systemctl stop bluetooth.service
-
-# Disable Bluetooth service to start on boot
-sudo systemctl disable bluetooth.service
-
-echo -e "\033[1;32mBluetooth has been disabled.\033[0m"
+echo "Bluetooth has been disabled."

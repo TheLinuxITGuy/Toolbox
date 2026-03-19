@@ -1,17 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo -e "\033[0;32m====================================="
-echo -e "\033[1;32mThe Linux IT Guy Toolbox"
-echo -e "\033[1;32mEnable Bluetooth"
-echo -e "\033[0;32m=====================================\033[0m"
+printf '[0;32m=====================================\n'
+printf '[1;32mThe Linux IT Guy Toolbox\n'
+printf '[1;32mEnable Bluetooth\n'
+printf '[0;32m=====================================[0m\n'
 
-# Unblock Bluetooth
-rfkill unblock bluetooth
+sudo rfkill unblock bluetooth
+sudo systemctl enable --now bluetooth.service
 
-# Start Bluetooth service
-sudo systemctl start bluetooth.service
-
-# Enable Bluetooth service to start on boot
-sudo systemctl enable bluetooth.service
-
-echo -e "\033[1;32mBluetooth has been enabled.\033[0m"
+echo "Bluetooth has been enabled."

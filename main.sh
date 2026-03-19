@@ -1,22 +1,81 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-APP_NAME=$1
-FLATPAK_LOCATION=$2
-ACTION=$3
-NALA_CMD="nala"
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+ACTION=""
+APP_LABEL=""
+PACKAGE_NAME=""
+FLATPAK_ID=""
+EXEC_NAME=""
 
-echo -e "\033[0;32m====================================="
-echo -e "\033[1;32mThe Linux IT Guy Toolbox"
-echo -e "\033[1;32m$ACTION $APP_NAME"
-echo -e "\033[0;32m=====================================\033[0m"
+print_header() {
+    local title=$1
+    printf '[0;32m=====================================\n'
+    printf '[1;32mThe Linux IT Guy Toolbox\n'
+    printf '[1;32m%s\n' "$title"
+    printf '[0;32m=====================================[0m\n'
+}
 
-# Function to detect the package manager
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") --label <label> [--package <package>] [--flatpak <flatpak-id>] [--exec <exec-name>] <install|remove>
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --label)
+            APP_LABEL=${2:-}
+            shift 2
+            ;;
+        --package)
+            PACKAGE_NAME=${2:-}
+            shift 2
+            ;;
+        --flatpak)
+            FLATPAK_ID=${2:-}
+            shift 2
+            ;;
+        --exec)
+            EXEC_NAME=${2:-}
+            shift 2
+            ;;
+        install|remove)
+            ACTION=$1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$ACTION" || -z "$APP_LABEL" ]]; then
+    usage >&2
+    exit 1
+fi
+
+if [[ -z "$PACKAGE_NAME" && -z "$FLATPAK_ID" ]]; then
+    echo "At least one install target is required (package or Flatpak ID)." >&2
+    exit 1
+fi
+
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
 detect_package_manager() {
-    if command -v apt &> /dev/null; then
+    if command_exists apt-get; then
         echo "apt"
-    elif command -v pacman &> /dev/null; then
+    elif command_exists pacman; then
         echo "pacman"
-    elif command -v dnf &> /dev/null; then
+    elif command_exists dnf; then
         echo "dnf"
     else
         echo "unknown"
@@ -25,100 +84,186 @@ detect_package_manager() {
 
 PACKAGE_MANAGER=$(detect_package_manager)
 
-# Check if Nala is installed (only for Debian-based systems)
-if [ "$PACKAGE_MANAGER" == "apt" ] && ! command -v $NALA_CMD &> /dev/null; then
-    echo "Nala is not installed. Installing now..."
-    sudo apt update
-    sudo apt install -y nala
-fi
+require_supported_pm() {
+    if [[ "$PACKAGE_MANAGER" == "unknown" ]]; then
+        echo "Unsupported package manager." >&2
+        exit 1
+    fi
+}
 
-# Check if Flatpak is installed
-if ! command -v flatpak &> /dev/null; then
-    echo "Flatpak is not installed. Installing now..."
-    case $PACKAGE_MANAGER in
+apt_install_tool() {
+    if command_exists nala; then
+        echo "nala"
+    else
+        echo "apt-get"
+    fi
+}
+
+APT_TOOL=$(apt_install_tool)
+
+apt_update() {
+    if [[ "$APT_TOOL" == "nala" ]]; then
+        sudo nala update
+    else
+        sudo apt-get update
+    fi
+}
+
+apt_install() {
+    if [[ "$APT_TOOL" == "nala" ]]; then
+        sudo nala install -y "$@"
+        sudo nala install -f -y
+    else
+        sudo apt-get install -y "$@"
+        sudo apt-get install -f -y
+    fi
+}
+
+apt_remove() {
+    if [[ "$APT_TOOL" == "nala" ]]; then
+        sudo nala remove -y "$@"
+    else
+        sudo apt-get remove -y "$@"
+        sudo apt-get autoremove -y
+    fi
+}
+
+native_installed() {
+    local package=$1
+    case "$PACKAGE_MANAGER" in
         apt)
-            sudo nala update
-            sudo nala install -y flatpak
+            dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q "install ok installed"
+            ;;
+        pacman)
+            pacman -Q "$package" >/dev/null 2>&1
+            ;;
+        dnf)
+            rpm -q "$package" >/dev/null 2>&1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+flatpak_installed() {
+    local app_id=$1
+    flatpak info "$app_id" >/dev/null 2>&1
+}
+
+ensure_flatpak() {
+    if command_exists flatpak; then
+        return 0
+    fi
+
+    echo "Flatpak is not installed. Installing now..."
+    case "$PACKAGE_MANAGER" in
+        apt)
+            apt_update
+            apt_install flatpak
             ;;
         pacman)
             sudo pacman -Syu --noconfirm
             sudo pacman -S --noconfirm flatpak
             ;;
         dnf)
-            sudo dnf check-update
             sudo dnf install -y flatpak
             ;;
         *)
-            echo "Unsupported package manager."
+            echo "Unsupported package manager." >&2
             exit 1
             ;;
     esac
-fi
+}
 
-flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-
-if [ "$ACTION" == "install" ]; then
-    # Check if the app is already installed
-    if ! command -v $APP_NAME &> /dev/null; then
-        echo "$APP_NAME is not installed. Installing now..."
-        if [ -z "$FLATPAK_LOCATION" ]; then
-            # Install the app using the detected package manager
-            case $PACKAGE_MANAGER in
-                apt)
-                    sudo nala update
-                    sudo nala install -y $APP_NAME
-                    sudo nala install -f -y
-                    ;;
-                pacman)
-                    if [ "$APP_NAME" == "steam" ]; then
-                        # enable_multilib
-                        if ! grep -q "^\[multilib\]" /etc/pacman.conf; then
-                            echo "Enabling Multilib repository..."
-                            sudo sed -i '/\[multilib\]/,/Include/s/^#//' /etc/pacman.conf
-                            echo "Multilib repository enabled. Updating package database..."
-                            sudo pacman -Syu --noconfirm
-                        else
-                            echo "Multilib repository is already enabled."
-                        fi
-                    fi
-                    sudo pacman -Syu --noconfirm
-                    sudo pacman -S --noconfirm $APP_NAME
-                    ;;
-                dnf)
-                    sudo dnf check-update
-                    sudo dnf install -y $APP_NAME
-                    ;;
-                *)
-                    echo "Unsupported package manager."
-                    exit 1
-                    ;;
-            esac
-        else
-            # Install the app using flatpak
-            flatpak install -y $FLATPAK_LOCATION
-        fi
-    else
-        echo "$APP_NAME is already installed. Skipping installation."
+install_native() {
+    local package=$1
+    if native_installed "$package"; then
+        echo "$package is already installed. Skipping installation."
+        return 0
     fi
-elif [ "$ACTION" == "remove" ]; then
-    # Remove the app
-    if [ -z "$FLATPAK_LOCATION" ]; then
-        case $PACKAGE_MANAGER in
-            apt)
-                sudo nala remove -y $APP_NAME
-                ;;
-            pacman)
-                sudo pacman -R --noconfirm $APP_NAME
-                ;;
-            dnf)
-                sudo dnf remove -y $APP_NAME
-                ;;
-            *)
-                echo "Unsupported package manager."
-                exit 1
-                ;;
-        esac
-    else
-        flatpak uninstall -y $FLATPAK_LOCATION
+
+    echo "$package is not installed. Installing now..."
+
+    case "$PACKAGE_MANAGER" in
+        apt)
+            apt_update
+            apt_install "$package"
+            ;;
+        pacman)
+            if [[ "$package" == "steam" ]] && ! grep -q '^\[multilib\]' /etc/pacman.conf; then
+                echo "Enabling multilib repository for Steam..."
+                sudo sed -i '/\[multilib\]/,/Include/s/^#//' /etc/pacman.conf
+            fi
+            sudo pacman -Syu --noconfirm
+            sudo pacman -S --noconfirm "$package"
+            ;;
+        dnf)
+            sudo dnf install -y "$package"
+            ;;
+    esac
+}
+
+remove_native() {
+    local package=$1
+    if ! native_installed "$package"; then
+        echo "$package is not installed. Skipping removal."
+        return 0
+    fi
+
+    case "$PACKAGE_MANAGER" in
+        apt)
+            apt_remove "$package"
+            ;;
+        pacman)
+            sudo pacman -R --noconfirm "$package"
+            ;;
+        dnf)
+            sudo dnf remove -y "$package"
+            ;;
+    esac
+}
+
+install_flatpak_app() {
+    local app_id=$1
+    ensure_flatpak
+
+    if flatpak_installed "$app_id"; then
+        echo "$app_id is already installed. Skipping installation."
+        return 0
+    fi
+
+    flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+    flatpak install -y flathub "$app_id"
+}
+
+remove_flatpak_app() {
+    local app_id=$1
+    ensure_flatpak
+
+    if ! flatpak_installed "$app_id"; then
+        echo "$app_id is not installed. Skipping removal."
+        return 0
+    fi
+
+    flatpak uninstall -y "$app_id"
+}
+
+print_header "${ACTION^} ${APP_LABEL}"
+require_supported_pm
+
+if [[ "$ACTION" == "install" ]]; then
+    if [[ -n "$PACKAGE_NAME" ]]; then
+        install_native "$PACKAGE_NAME"
+    fi
+    if [[ -n "$FLATPAK_ID" ]]; then
+        install_flatpak_app "$FLATPAK_ID"
+    fi
+elif [[ "$ACTION" == "remove" ]]; then
+    if [[ -n "$PACKAGE_NAME" ]]; then
+        remove_native "$PACKAGE_NAME"
+    fi
+    if [[ -n "$FLATPAK_ID" ]]; then
+        remove_flatpak_app "$FLATPAK_ID"
     fi
 fi

@@ -4,68 +4,78 @@
 
 ![Preview](Screenshot/Screenshot4.png)
 
-**The Linux IT Guy Toolbox** is a Python script that provides a user-friendly GUI for managing various applications and system settings on your Linux machine. Easily install or remove applications, manage power settings, or perform system updates with the click of a button! 🚀
+**The Linux IT Guy Toolbox** is a Python GUI for installing apps, removing apps, and running a few practical Linux admin tasks without memorizing package names or Flatpak IDs.
 
-## ✨ Features 
+## What it does
 
-- **Install Applications**: Easily install a variety of applications categorized by their use.
-- **Remove Applications**: Quickly remove unwanted applications.
-- **Administration**: Manage power settings, update your system, and more.
-- **Cross-Distribution Support**: Works on Arch-based, Debian-based, and Fedora-based distributions.
-- **Automatic Dependency Installation**: Checks for and installs necessary dependencies.
+- Install native packages and Flatpak apps from one UI
+- Remove native packages and Flatpak apps from one UI
+- Run common admin helpers like system updates, Bluetooth toggles, and TLP setup
+- Show lightweight local system information
+- Work across Debian-based, Arch-based, and Fedora-based distributions
 
-## 📥 Pre-Reqs
+## Requirements
 
-<details>
-<summary>Arch</summary>
-
-```
+### Arch
+```bash
 sudo pacman -Syu git pyside6
 ```
-</details>
 
-<details>
-<summary>Debian (Linux Mint)</summary>
-
-```
-sudo apt update && sudo apt install -y git pyside6
-```
-</details>
-
-<details>
-<summary>Fedora Silverblue</summary>
-
-```
-rpm-ostree install python-pyside6
-#use sudo dnf install python-pyside6 if running Fedora Workstation.
-```
-</details>
-
-## 🛠️ Install
-
-To get started, simply copy and paste this command in your terminal after checking the pre-reqs:
-```
-git clone https://github.com/TheLinuxITGuy/Toolbox.git && cd Toolbox && python3 Main.py
+### Debian / Ubuntu / Linux Mint
+```bash
+sudo apt update && sudo apt install -y git python3-pyside6
 ```
 
-## 🖥️ Usage 
+### Fedora
+```bash
+sudo dnf install -y git python3-pyside6
+```
 
-1. **Install Tab**: Select the applications you want to install from the categorized list and click "Run".
-2. **Remove Tab**: Select the applications you want to remove and click "Run".
-3. **Administration Tab**: Manage power settings, update your system, and more by selecting the desired options and clicking "Run".
-4. **System Info Tab**: Displays system information.
+> If PySide6 is missing, the app will try to bootstrap it automatically.
 
-## ⚙️ Configuration 
+## Install
 
-The applications and their categories are defined in the `apps_config.csv` file. You can customize this file to add or remove applications as needed.
+```bash
+git clone https://github.com/TheLinuxITGuy/Toolbox.git
+cd Toolbox
+python3 Main.py
+```
 
-## 🎥 Video
+## Usage
+
+1. Open the **Install** tab and choose native packages or Flatpaks.
+2. Open the **Remove** tab to uninstall apps.
+3. Open **Administration** for system tasks.
+4. Click **Run Selected Tasks** and enter your sudo password when prompted.
+5. Review progress in the built-in process log.
+
+## App catalog
+
+The application catalog lives in `apps_config.csv`.
+
+Current columns:
+- `Category`
+- `Label`
+- `Package Name`
+- `Flatpak ID`
+- `Exec Name`
+- `Notes`
+
+That structure makes it easier to keep user-facing labels separate from package names and Flatpak IDs.
+
+## Notes
+
+- Flatpak installs use the Flathub remote.
+- Native package install detection now uses package-manager queries instead of guessing from executable names.
+- The GUI resolves files relative to `Main.py`, so it does not depend on your current working directory.
+
+## Video
 [![Video](https://img.youtube.com/vi/PJytFBO3seM/maxresdefault.jpg)](https://youtu.be/PJytFBO3seM)
 
-## 📥 Supported Distros
+## Supported distros
 ![Static Badge](https://img.shields.io/badge/Arch-%231A365D?style=for-the-badge&logo=arch%20linux&logoColor=%23E9FC12)
 ![Static Badge](https://img.shields.io/badge/Debian-%231A365D?style=for-the-badge&logo=debian&logoColor=%23E9FC12)
 ![Static Badge](https://img.shields.io/badge/Fedora-%231A365D?style=for-the-badge&logo=fedora&logoColor=%23E9FC12)
 
-## 💖 Sponsor
+## Sponsor
 https://www.paypal.com/donate/?hosted_button_id=WPTX2BMBARSG2

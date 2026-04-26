@@ -2,7 +2,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/TheLinuxITGuy/Toolbox?style=for-the-badge&labelColor=%231A365D&color=%23E9FC12)
 ![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TheLinuxITGuy/Toolbox/total?style=for-the-badge&labelColor=%231A365D&color=%23E9FC12)
 
-![Preview](Screenshot/Screenshot5.png)
+![Preview](Screenshot/Screenshot6.png)
 
 **The Linux IT Guy Toolbox** is a Rust desktop app for installing apps, removing apps, and running practical Linux admin tasks without memorizing package names or Flatpak IDs.
 

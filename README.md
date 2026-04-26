@@ -74,8 +74,6 @@ chmod +x linux-it-guy-toolbox
 ./linux-it-guy-toolbox
 ```
 
-The legacy Python implementation is still present as `Main.py` while the Rust rewrite settles, but the Rust app is the forward path.
-
 ## Usage
 
 1. Open the **Install** tab and choose native packages or Flatpaks.

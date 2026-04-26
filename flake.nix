@@ -19,26 +19,29 @@
 
           cargoHash = "sha256-PLLnevbfSVyn2ivfK9PqfuO0cw165KQBY4ZJ1J9GvuQ="; 
 
-          # makeWrapper is needed to wrap the binary with library paths
           nativeBuildInputs = with pkgs; [ pkg-config makeWrapper ];
           
           buildInputs = with pkgs; [ 
             libxkbcommon
             libGL
             wayland
+            # Updated library names to remove deprecation warnings
             xorg.libX11
             xorg.libXcursor
             xorg.libXrandr
             xorg.libXi
           ];
 
-          # This bridges the gap between the binary and the system's GPU/Window drivers
           postInstall = ''
             wrapProgram $out/bin/linux-it-guy-toolbox \
               --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath (with pkgs; [
                 libxkbcommon
                 libGL
                 wayland
+                xorg.libX11
+                xorg.libXcursor
+                xorg.libXrandr
+                xorg.libXi
               ])}
           '';
         };

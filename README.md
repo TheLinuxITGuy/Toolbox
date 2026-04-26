@@ -60,6 +60,10 @@ sudo dnf install -y git cargo rust libxcb-devel libxkbcommon-devel openssl-devel
 ```bash
 nix-shell -p cargo rustc pkg-config xorg.libxcb libxkbcommon openssl
 ```
+To run on NixOS without installing: 
+```bash
+nix run github:TheLinuxITGuy/Toolbox
+```
 
 ## Install
 

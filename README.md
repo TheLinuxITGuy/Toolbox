@@ -70,7 +70,8 @@ nix run github:TheLinuxITGuy/Toolbox --extra-experimental-features 'nix-command 
 ```bash
 git clone https://github.com/TheLinuxITGuy/Toolbox.git
 cd Toolbox
-cargo run --release
+chmod +x linux-it-guy-toolbox
+./linux-it-guy-toolbox
 ```
 
 The legacy Python implementation is still present as `Main.py` while the Rust rewrite settles, but the Rust app is the forward path.

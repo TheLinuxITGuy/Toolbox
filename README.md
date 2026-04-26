@@ -6,7 +6,7 @@
 
 **The Linux IT Guy Toolbox** is a Python GUI for installing apps, removing apps, and running practical Linux admin tasks without memorizing package names or Flatpak IDs.
 
-As of **2026-03-19**, **Henry** — my OpenClaw agent — is actively helping develop and improve this project.
+**As of 4/26/26** - I'm doing a deepdive into NixOS video and realized the Toolbox doesn't currently have support for NixOS. I also realized the pyside6 requirement is kinda annoying so I'm looking into what it would take to rewrite the app in Rust. **One binary, no prereqs, simple, and super fast.**
 
 ## What it does
 

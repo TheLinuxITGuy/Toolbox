@@ -62,7 +62,7 @@ nix-shell -p cargo rustc pkg-config xorg.libxcb libxkbcommon openssl
 ```
 To run on NixOS without installing: 
 ```bash
-nix run github:TheLinuxITGuy/Toolbox
+nix run github:TheLinuxITGuy/Toolbox --extra-experimental-features 'nix-command flakes'
 ```
 
 ## Install

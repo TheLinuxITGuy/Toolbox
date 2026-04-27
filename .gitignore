@@ -1,0 +1,42 @@
+# Rust build output
+/target/
+
+# Locally built binaries
+/linux-it-guy-toolbox
+*.exe
+*.dll
+*.dylib
+*.so
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# Local environment/config files
+.env
+.env.*
+!.env.example
+
+# OS metadata
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor and IDE folders
+.idea/
+.vscode/
+*.code-workspace
+
+# Nix local outputs
+/result
+/result-*
+
+# Coverage/profiling output
+/coverage/
+*.profraw

@@ -62,7 +62,7 @@ Apps are defined in `apps_config.csv` with columns:
 
 Users can add applications be editing the `apps_config.csv` file.
 
-## NixOS Support
+## ❄️ NixOS Support
 
 On NixOS, installs and removals are handled declaratively instead of using `nix-env`.
 

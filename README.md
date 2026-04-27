@@ -50,6 +50,9 @@ sudo dnf install -y git cargo rust libxcb-devel libxkbcommon-devel openssl-devel
 
 # NixOS
 nix-shell -p cargo rustc pkg-config xorg.libxcb libxkbcommon openssl
+
+# NixOS without installing
+nix run github:TheLinuxITGuy/Toolbox --extra-experimental-features 'nix-command flakes'
 ```
 
 ## 📋 App Catalog

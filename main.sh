@@ -7,9 +7,6 @@ APP_LABEL=""
 PACKAGE_NAME=""
 FLATPAK_ID=""
 EXEC_NAME=""
-NIX_PACKAGE=""
-NIXOS_CONFIG="/etc/nixos/configuration.nix"
-NIXOS_TOOLBOX_MODULE="/etc/nixos/toolbox-packages.nix"
 
 print_header() {
     local title=$1
@@ -21,7 +18,7 @@ print_header() {
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") --label <label> [--package <package>] [--flatpak <flatpak-id>] [--exec <exec-name>] [--nix-package <nix-attr>] <install|remove>
+Usage: $(basename "$0") --label <label> [--package <package>] [--flatpak <flatpak-id>] [--exec <exec-name>] <install|remove>
 EOF
 }
 
@@ -41,10 +38,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --exec)
             EXEC_NAME=${2:-}
-            shift 2
-            ;;
-        --nix-package)
-            NIX_PACKAGE=${2:-}
             shift 2
             ;;
         install|remove)
@@ -68,8 +61,8 @@ if [[ -z "$ACTION" || -z "$APP_LABEL" ]]; then
     exit 1
 fi
 
-if [[ -z "$PACKAGE_NAME" && -z "$FLATPAK_ID" && -z "$NIX_PACKAGE" ]]; then
-    echo "At least one install target is required (package, Flatpak ID, or Nix package)." >&2
+if [[ -z "$PACKAGE_NAME" && -z "$FLATPAK_ID" ]]; then
+    echo "At least one install target is required (package or Flatpak ID)." >&2
     exit 1
 fi
 
@@ -78,9 +71,7 @@ command_exists() {
 }
 
 detect_package_manager() {
-    if [[ -f /etc/NIXOS ]]; then
-        echo "nixos"
-    elif command_exists apt-get; then
+    if command_exists apt-get; then
         echo "apt"
     elif command_exists pacman; then
         echo "pacman"
@@ -149,9 +140,6 @@ native_installed() {
         dnf)
             rpm -q "$package" >/dev/null 2>&1
             ;;
-        nixos)
-            nixos_package_configured "$NIX_PACKAGE"
-            ;;
         *)
             return 1
             ;;
@@ -180,10 +168,6 @@ ensure_flatpak() {
             ;;
         dnf)
             sudo dnf install -y flatpak
-            ;;
-        nixos)
-            echo "Flatpak is not installed. Enable Flatpak declaratively in your NixOS configuration first."
-            exit 1
             ;;
         *)
             echo "Unsupported package manager." >&2
@@ -217,9 +201,6 @@ install_native() {
         dnf)
             sudo dnf install -y "$package"
             ;;
-        nixos)
-            install_nixos_package "$NIX_PACKAGE"
-            ;;
     esac
 }
 
@@ -240,146 +221,7 @@ remove_native() {
         dnf)
             sudo dnf remove -y "$package"
             ;;
-        nixos)
-            remove_nixos_package "$NIX_PACKAGE"
-            ;;
     esac
-}
-
-nixos_require_package() {
-    local package=${1:-}
-    if [[ -z "$package" ]]; then
-        echo "No Nix package attribute is configured for ${APP_LABEL}." >&2
-        echo "Add a Nix Package value for this app in apps_config.csv." >&2
-        exit 1
-    fi
-}
-
-nixos_package_configured() {
-    local package=${1:-}
-    [[ -n "$package" ]] || return 1
-    [[ -f "$NIXOS_TOOLBOX_MODULE" ]] || return 1
-    read_nixos_packages | grep -Fxq "$package"
-}
-
-ensure_nixos_toolbox_module() {
-    if [[ ! -f "$NIXOS_CONFIG" ]]; then
-        echo "NixOS configuration file not found at ${NIXOS_CONFIG}." >&2
-        exit 1
-    fi
-
-    if [[ ! -f "$NIXOS_TOOLBOX_MODULE" ]]; then
-        echo "Creating ${NIXOS_TOOLBOX_MODULE}..."
-        sudo tee "$NIXOS_TOOLBOX_MODULE" >/dev/null <<'EOF'
-{ pkgs, ... }:
-
-{
-  # Managed by The Linux IT Guy Toolbox.
-  # The Toolbox edits this file instead of editing your main configuration.nix package list.
-  environment.systemPackages = with pkgs; [
-  ];
-}
-EOF
-    fi
-
-    if ! grep -Eq '^[[:space:]]*\./toolbox-packages\.nix' "$NIXOS_CONFIG"; then
-        echo "Adding ./toolbox-packages.nix import to ${NIXOS_CONFIG}..."
-        sudo cp "$NIXOS_CONFIG" "${NIXOS_CONFIG}.toolbox.bak"
-        local tmp_file
-        tmp_file=$(mktemp)
-        awk '
-            BEGIN { in_imports=0; inserted=0 }
-            /imports[[:space:]]*=[[:space:]]*\[/ { in_imports=1 }
-            in_imports && /^[[:space:]]*\];/ && !inserted {
-                print "    ./toolbox-packages.nix"
-                inserted=1
-                in_imports=0
-            }
-            { print }
-            END {
-                if (!inserted) {
-                    exit 42
-                }
-            }
-        ' "$NIXOS_CONFIG" > "$tmp_file" || {
-            rm -f "$tmp_file"
-            echo "Could not find an imports = [ ... ]; block in configuration.nix." >&2
-            echo "Add ./toolbox-packages.nix manually and try again." >&2
-            exit 1
-        }
-        sudo tee "$NIXOS_CONFIG" < "$tmp_file" >/dev/null
-        rm -f "$tmp_file"
-    else
-        echo "${NIXOS_CONFIG} already imports ./toolbox-packages.nix."
-    fi
-}
-
-rewrite_nixos_packages() {
-    local packages=("$@")
-    {
-        printf '{ pkgs, ... }:\n\n'
-        printf '{\n'
-        printf '  # Managed by The Linux IT Guy Toolbox.\n'
-        printf '  # The Toolbox edits this file instead of editing your main configuration.nix package list.\n'
-        printf '  environment.systemPackages = with pkgs; [\n'
-        for package in "${packages[@]}"; do
-            printf '    %s\n' "$package"
-        done
-        printf '  ];\n'
-        printf '}\n'
-    } | sudo tee "$NIXOS_TOOLBOX_MODULE" >/dev/null
-}
-
-read_nixos_packages() {
-    awk '
-        /environment\.systemPackages[[:space:]]*=[[:space:]]*with[[:space:]]+pkgs;[[:space:]]*\[/ { inside=1; next }
-        inside && /^[[:space:]]*\]/ { inside=0; next }
-        inside {
-            line=$0
-            sub(/#.*/, "", line)
-            gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
-            if (line != "") print line
-        }
-    ' "$NIXOS_TOOLBOX_MODULE" | sort -u
-}
-
-apply_nixos_config() {
-    echo "Applying NixOS configuration..."
-    sudo nixos-rebuild switch
-}
-
-install_nixos_package() {
-    local package=$1
-    nixos_require_package "$package"
-    ensure_nixos_toolbox_module
-
-    if nixos_package_configured "$package"; then
-        echo "${package} is already managed by ${NIXOS_TOOLBOX_MODULE}. Skipping edit."
-    else
-        echo "Adding ${package} to ${NIXOS_TOOLBOX_MODULE}..."
-        mapfile -t packages < <(read_nixos_packages)
-        packages+=("$package")
-        mapfile -t packages < <(printf '%s\n' "${packages[@]}" | awk 'NF' | sort -u)
-        rewrite_nixos_packages "${packages[@]}"
-    fi
-
-    apply_nixos_config
-}
-
-remove_nixos_package() {
-    local package=$1
-    nixos_require_package "$package"
-    ensure_nixos_toolbox_module
-
-    if ! nixos_package_configured "$package"; then
-        echo "${package} is not managed by ${NIXOS_TOOLBOX_MODULE}. Skipping edit."
-    else
-        echo "Removing ${package} from ${NIXOS_TOOLBOX_MODULE}..."
-        mapfile -t packages < <(read_nixos_packages | grep -Fxv "$package" || true)
-        rewrite_nixos_packages "${packages[@]}"
-    fi
-
-    apply_nixos_config
 }
 
 install_flatpak_app() {
@@ -409,15 +251,6 @@ remove_flatpak_app() {
 
 print_header "${ACTION^} ${APP_LABEL}"
 require_supported_pm
-
-if [[ "$PACKAGE_MANAGER" == "nixos" ]]; then
-    if [[ "$ACTION" == "install" ]]; then
-        install_nixos_package "$NIX_PACKAGE"
-    elif [[ "$ACTION" == "remove" ]]; then
-        remove_nixos_package "$NIX_PACKAGE"
-    fi
-    exit 0
-fi
 
 if [[ "$ACTION" == "install" ]]; then
     if [[ -n "$PACKAGE_NAME" ]]; then

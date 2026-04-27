@@ -7,7 +7,7 @@ A fast Rust desktop app for installing/removing apps and running Linux admin tas
 
 ![Preview](Screenshot/Screenshot6.png)
 
-**Supports:** Arch, Debian, Fedora, NixOS 
+**Supports:** Arch, Debian, Fedora
 
 🛑 **Linux Mint 22.3** DON'T UPGRADE YET. Ubuntu 26.04 LTS works - wait for Linux Mint 23 based on 26.04 to be released
 
@@ -47,36 +47,17 @@ sudo apt install -y git cargo rustc libxcb-render0-dev libxcb-shape0-dev libxcb-
 
 # Fedora
 sudo dnf install -y git cargo rust libxcb-devel libxkbcommon-devel openssl-devel
-
-# NixOS
-nix-shell -p cargo rustc pkg-config xorg.libxcb libxkbcommon openssl
-
-# NixOS without installing
-nix run github:TheLinuxITGuy/Toolbox --extra-experimental-features 'nix-command flakes'
 ```
 
 ## 📋 App Catalog
 
 Apps are defined in `apps_config.csv` with columns:
-- `Category`, `Label`, `Package Name`, `Flatpak ID`, `Exec Name`, `Nix Package`, `Notes`
+- `Category`, `Label`, `Package Name`, `Flatpak ID`, `Exec Name`, `Notes`
 
 Users can add applications be editing the `apps_config.csv` file.
 
-## ❄️ NixOS Support
-
-On NixOS, installs and removals are handled declaratively instead of using `nix-env`.
-
-- The app detects NixOS with `/etc/NIXOS`.
-- Selected apps use the `Nix Package` value from `apps_config.csv`.
-- The first NixOS change creates `/etc/nixos/toolbox-packages.nix`.
-- The app imports that file from `/etc/nixos/configuration.nix`, backing up the original as `/etc/nixos/configuration.nix.toolbox.bak`.
-- Changes are applied with `sudo nixos-rebuild switch`.
-
-Some packages, especially unfree apps such as Chrome, Steam, and VS Code, may also require the user's NixOS configuration to allow unfree packages or enable app-specific NixOS options.
-
 ## ⚠️ Known Limitations
 
-- NixOS support manages a dedicated `/etc/nixos/toolbox-packages.nix` module
 - Some apps are better as Flatpaks on certain distros
 - Some admin actions are distro-specific
 - Optional packages may not be in all default repositories
@@ -90,7 +71,6 @@ Some packages, especially unfree apps such as Chrome, Steam, and VS Code, may al
 ![Static Badge](https://img.shields.io/badge/Arch-%231A365D?style=for-the-badge&logo=arch%20linux&logoColor=%23E9FC12)
 ![Static Badge](https://img.shields.io/badge/Debian-%231A365D?style=for-the-badge&logo=debian&logoColor=%23E9FC12)
 ![Static Badge](https://img.shields.io/badge/Fedora-%231A365D?style=for-the-badge&logo=fedora&logoColor=%23E9FC12)
-![Static Badge](https://img.shields.io/badge/NixOS-%231A365D?style=for-the-badge&logo=nixos&logoColor=%23E9FC12)
 
 ## 💝 Sponsor
 

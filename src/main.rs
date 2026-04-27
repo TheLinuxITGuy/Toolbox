@@ -43,6 +43,8 @@ struct CsvAppEntry {
     flatpak_id: String,
     #[serde(rename = "Exec Name")]
     exec_name: String,
+    #[serde(rename = "Nix Package", default)]
+    nix_package: String,
     #[serde(rename = "Notes")]
     notes: String,
 }
@@ -54,11 +56,16 @@ struct AppEntry {
     package_name: String,
     flatpak_id: String,
     exec_name: String,
+    nix_package: String,
     notes: String,
 }
 
 impl AppEntry {
-    fn source_label(&self) -> &'static str {
+    fn source_label(&self, package_manager: &str) -> &'static str {
+        if package_manager == "nixos" && !self.nix_package.is_empty() {
+            return "nix";
+        }
+
         if self.flatpak_id.is_empty() {
             "native"
         } else if self.package_name.is_empty() {
@@ -80,6 +87,8 @@ impl AppEntry {
             self.flatpak_id.clone(),
             "--exec".to_owned(),
             self.exec_name.clone(),
+            "--nix-package".to_owned(),
+            self.nix_package.clone(),
             action.to_owned(),
         ]
     }
@@ -281,6 +290,7 @@ impl ToolboxApp {
         entry.label.to_lowercase().contains(&needle)
             || entry.package_name.to_lowercase().contains(&needle)
             || entry.flatpak_id.to_lowercase().contains(&needle)
+            || entry.nix_package.to_lowercase().contains(&needle)
             || entry.category.to_lowercase().contains(&needle)
     }
 
@@ -554,8 +564,10 @@ impl ToolboxApp {
             .get(icon_key(&entry.label))
             .or_else(|| self.icons.get(icon_key(entry.exec_name.as_str())))
             .cloned();
-        let source = entry.source_label();
-        let detail = if !entry.flatpak_id.is_empty() {
+        let source = entry.source_label(&self.package_manager);
+        let detail = if self.package_manager == "nixos" && !entry.nix_package.is_empty() {
+            entry.nix_package.clone()
+        } else if !entry.flatpak_id.is_empty() {
             entry.flatpak_id.clone()
         } else if !entry.package_name.is_empty() {
             entry.package_name.clone()
@@ -1908,7 +1920,7 @@ fn distro_selected(label: &str, package_manager: &str, distro_name: &str) -> boo
         "Debian" => {
             package_manager == "apt-get" || distro.contains("debian") || distro.contains("ubuntu")
         }
-        "NixOS" => package_manager == "nix-env" || distro.contains("nixos"),
+        "NixOS" => package_manager == "nixos" || distro.contains("nixos"),
         "Fedora" => package_manager == "dnf" || distro.contains("fedora"),
         _ => false,
     }
@@ -2105,6 +2117,7 @@ fn load_apps(base_dir: &Path) -> Vec<AppEntry> {
             package_name: entry.package_name.trim().to_owned(),
             flatpak_id: entry.flatpak_id.trim().to_owned(),
             exec_name: entry.exec_name.trim().to_owned(),
+            nix_package: entry.nix_package.trim().to_owned(),
             notes: entry.notes.trim().to_owned(),
         })
         .collect()
@@ -2228,7 +2241,11 @@ fn distro_name() -> String {
 }
 
 fn detect_package_manager() -> String {
-    for manager in ["apt-get", "pacman", "dnf", "nix-env"] {
+    if Path::new("/etc/NIXOS").exists() {
+        return "nixos".to_owned();
+    }
+
+    for manager in ["apt-get", "pacman", "dnf"] {
         if Command::new("sh")
             .arg("-c")
             .arg(format!("command -v {manager} >/dev/null 2>&1"))

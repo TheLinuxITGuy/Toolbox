@@ -58,13 +58,25 @@ nix run github:TheLinuxITGuy/Toolbox --extra-experimental-features 'nix-command 
 ## 📋 App Catalog
 
 Apps are defined in `apps_config.csv` with columns:
-- `Category`, `Label`, `Package Name`, `Flatpak ID`, `Exec Name`, `Notes`
+- `Category`, `Label`, `Package Name`, `Flatpak ID`, `Exec Name`, `Nix Package`, `Notes`
 
 Users can add applications be editing the `apps_config.csv` file.
 
+## NixOS Support
+
+On NixOS, installs and removals are handled declaratively instead of using `nix-env`.
+
+- The app detects NixOS with `/etc/NIXOS`.
+- Selected apps use the `Nix Package` value from `apps_config.csv`.
+- The first NixOS change creates `/etc/nixos/toolbox-packages.nix`.
+- The app imports that file from `/etc/nixos/configuration.nix`, backing up the original as `/etc/nixos/configuration.nix.toolbox.bak`.
+- Changes are applied with `sudo nixos-rebuild switch`.
+
+Some packages, especially unfree apps such as Chrome, Steam, and VS Code, may also require the user's NixOS configuration to allow unfree packages or enable app-specific NixOS options.
+
 ## ⚠️ Known Limitations
 
-- NixOS support is still being tested
+- NixOS support manages a dedicated `/etc/nixos/toolbox-packages.nix` module
 - Some apps are better as Flatpaks on certain distros
 - Some admin actions are distro-specific
 - Optional packages may not be in all default repositories

@@ -47,6 +47,9 @@ sudo apt install -y git cargo rustc libxcb-render0-dev libxcb-shape0-dev libxcb-
 
 # Fedora
 sudo dnf install -y git cargo rust libxcb-devel libxkbcommon-devel openssl-devel
+
+# Silverblue / bazzite / ublue
+rpm-ostree install -y git cargo rust libxcb-devel libxkbcommon-devel openssl-devel
 ```
 
 ## 📋 App Catalog

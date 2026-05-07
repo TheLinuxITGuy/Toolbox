@@ -70,6 +70,36 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+validate_native_package() {
+    local package=$1
+    [[ "$package" =~ ^[A-Za-z0-9][A-Za-z0-9+._:-]*$ ]]
+}
+
+validate_flatpak_id() {
+    local app_id=$1
+    [[ "$app_id" =~ ^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+$ ]]
+}
+
+validate_exec_name() {
+    local exec_name=$1
+    [[ -z "$exec_name" || "$exec_name" =~ ^[A-Za-z0-9][A-Za-z0-9+._-]*$ ]]
+}
+
+validate_inputs() {
+    if [[ -n "$PACKAGE_NAME" ]] && ! validate_native_package "$PACKAGE_NAME"; then
+        echo "Invalid native package name: $PACKAGE_NAME" >&2
+        exit 1
+    fi
+    if [[ -n "$FLATPAK_ID" ]] && ! validate_flatpak_id "$FLATPAK_ID"; then
+        echo "Invalid Flatpak ID: $FLATPAK_ID" >&2
+        exit 1
+    fi
+    if ! validate_exec_name "$EXEC_NAME"; then
+        echo "Invalid executable name: $EXEC_NAME" >&2
+        exit 1
+    fi
+}
+
 detect_package_manager() {
     if command_exists apt-get; then
         echo "apt"
@@ -81,6 +111,8 @@ detect_package_manager() {
         echo "unknown"
     fi
 }
+
+validate_inputs
 
 PACKAGE_MANAGER=$(detect_package_manager)
 
@@ -111,19 +143,19 @@ apt_update() {
 
 apt_install() {
     if [[ "$APT_TOOL" == "nala" ]]; then
-        sudo nala install -y "$@"
+        sudo nala install -y -- "$@"
         sudo nala install -f -y
     else
-        sudo apt-get install -y "$@"
+        sudo apt-get install -y -- "$@"
         sudo apt-get install -f -y
     fi
 }
 
 apt_remove() {
     if [[ "$APT_TOOL" == "nala" ]]; then
-        sudo nala remove -y "$@"
+        sudo nala remove -y -- "$@"
     else
-        sudo apt-get remove -y "$@"
+        sudo apt-get remove -y -- "$@"
         sudo apt-get autoremove -y
     fi
 }
@@ -132,13 +164,13 @@ native_installed() {
     local package=$1
     case "$PACKAGE_MANAGER" in
         apt)
-            dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q "install ok installed"
+            dpkg-query -W -f='${Status}' -- "$package" 2>/dev/null | grep -q "install ok installed"
             ;;
         pacman)
-            pacman -Q "$package" >/dev/null 2>&1
+            pacman -Q -- "$package" >/dev/null 2>&1
             ;;
         dnf)
-            rpm -q "$package" >/dev/null 2>&1
+            rpm -q -- "$package" >/dev/null 2>&1
             ;;
         *)
             return 1
@@ -148,7 +180,7 @@ native_installed() {
 
 flatpak_installed() {
     local app_id=$1
-    flatpak info "$app_id" >/dev/null 2>&1
+    flatpak info -- "$app_id" >/dev/null 2>&1
 }
 
 ensure_flatpak() {
@@ -196,10 +228,10 @@ install_native() {
                 sudo sed -i '/\[multilib\]/,/Include/s/^#//' /etc/pacman.conf
             fi
             sudo pacman -Syu --noconfirm
-            sudo pacman -S --noconfirm "$package"
+            sudo pacman -S --noconfirm -- "$package"
             ;;
         dnf)
-            sudo dnf install -y "$package"
+            sudo dnf install -y -- "$package"
             ;;
     esac
 }
@@ -216,10 +248,10 @@ remove_native() {
             apt_remove "$package"
             ;;
         pacman)
-            sudo pacman -R --noconfirm "$package"
+            sudo pacman -R --noconfirm -- "$package"
             ;;
         dnf)
-            sudo dnf remove -y "$package"
+            sudo dnf remove -y -- "$package"
             ;;
     esac
 }
@@ -234,7 +266,7 @@ install_flatpak_app() {
     fi
 
     flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-    flatpak install -y flathub "$app_id"
+    flatpak install -y -- flathub "$app_id"
 }
 
 remove_flatpak_app() {
@@ -246,7 +278,7 @@ remove_flatpak_app() {
         return 0
     fi
 
-    flatpak uninstall -y "$app_id"
+    flatpak uninstall -y -- "$app_id"
 }
 
 print_header "${ACTION^} ${APP_LABEL}"

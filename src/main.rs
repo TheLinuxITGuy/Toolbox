@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::{Command, Stdio},
     sync::mpsc::{self, Receiver, Sender},
     thread,
@@ -68,10 +68,11 @@ impl AppEntry {
         }
     }
 
-    fn command(&self, base_dir: &Path, action: &str) -> Vec<String> {
-        vec![
+    fn command(&self, base_dir: &Path, action: &str) -> Option<Vec<String>> {
+        let main_script = resolve_resource_path(base_dir, "main.sh")?;
+        Some(vec![
             "bash".to_owned(),
-            base_dir.join("main.sh").display().to_string(),
+            main_script.display().to_string(),
             "--label".to_owned(),
             self.label.clone(),
             "--package".to_owned(),
@@ -81,7 +82,7 @@ impl AppEntry {
             "--exec".to_owned(),
             self.exec_name.clone(),
             action.to_owned(),
-        ]
+        ])
     }
 }
 
@@ -93,11 +94,9 @@ struct AdminTask {
 }
 
 impl AdminTask {
-    fn command(&self, base_dir: &Path) -> Vec<String> {
-        vec![
-            "bash".to_owned(),
-            base_dir.join(&self.script).display().to_string(),
-        ]
+    fn command(&self, base_dir: &Path) -> Option<Vec<String>> {
+        let script = resolve_resource_path(base_dir, &self.script)?;
+        Some(vec!["bash".to_owned(), script.display().to_string()])
     }
 }
 
@@ -208,28 +207,34 @@ impl ToolboxApp {
         let mut tasks = Vec::new();
 
         for index in &self.install_selected {
-            if let Some(entry) = self.apps.get(*index) {
+            if let Some(entry) = self.apps.get(*index)
+                && let Some(command) = entry.command(&self.base_dir, "install")
+            {
                 tasks.push(Task {
                     description: format!("Installing {}", entry.label),
-                    command: entry.command(&self.base_dir, "install"),
+                    command,
                 });
             }
         }
 
         for index in &self.remove_selected {
-            if let Some(entry) = self.apps.get(*index) {
+            if let Some(entry) = self.apps.get(*index)
+                && let Some(command) = entry.command(&self.base_dir, "remove")
+            {
                 tasks.push(Task {
                     description: format!("Removing {}", entry.label),
-                    command: entry.command(&self.base_dir, "remove"),
+                    command,
                 });
             }
         }
 
         for index in &self.admin_selected {
-            if let Some(task) = self.admin_tasks.get(*index) {
+            if let Some(task) = self.admin_tasks.get(*index)
+                && let Some(command) = task.command(&self.base_dir)
+            {
                 tasks.push(Task {
                     description: format!("Running {}", task.label),
-                    command: task.command(&self.base_dir),
+                    command,
                 });
             }
         }
@@ -267,10 +272,10 @@ impl ToolboxApp {
     }
 
     fn app_matches_filter(&self, entry: &AppEntry) -> bool {
-        if let Some(category) = &self.category_filter {
-            if &entry.category != category {
-                return false;
-            }
+        if let Some(category) = &self.category_filter
+            && &entry.category != category
+        {
+            return false;
         }
 
         let needle = self.search.trim().to_lowercase();
@@ -521,15 +526,12 @@ impl ToolboxApp {
                     if flat_text_button(ui, "Select All", accent_blue(), 92.0).clicked() {
                         self.select_visible_apps(true);
                     }
-                    search_field(
-                        ui,
-                        &mut self.search,
-                        if install {
-                            "Filter apps..."
-                        } else {
-                            "Filter apps..."
-                        },
-                    );
+                    let hint = if install {
+                        "Filter apps to install..."
+                    } else {
+                        "Filter apps to remove..."
+                    };
+                    search_field(ui, &mut self.search, hint);
                 });
             });
         });
@@ -2072,34 +2074,123 @@ fn page_subtitle(page: Page) -> &'static str {
 }
 
 fn find_base_dir() -> PathBuf {
-    if let Ok(exe) = env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            if dir.join("apps_config.csv").exists() {
-                return dir.to_path_buf();
-            }
+    if let Ok(override_dir) = env::var("TOOLBOX_BASE_DIR") {
+        let path = PathBuf::from(override_dir);
+        if resource_dir_has_required_files(&path) {
+            return path.canonicalize().unwrap_or(path);
         }
     }
 
-    env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+    if let Ok(exe) = env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        for candidate in dir.ancestors().take(5) {
+            if resource_dir_has_required_files(candidate) {
+                return candidate
+                    .canonicalize()
+                    .unwrap_or_else(|_| candidate.to_path_buf());
+            }
+        }
+        return dir.to_path_buf();
+    }
+
+    PathBuf::from("/usr/share/linux-it-guy-toolbox")
+}
+
+fn resource_dir_has_required_files(dir: &Path) -> bool {
+    dir.join("apps_config.csv").is_file() && dir.join("main.sh").is_file()
+}
+
+fn resolve_resource_path(base_dir: &Path, relative: &str) -> Option<PathBuf> {
+    let relative_path = Path::new(relative);
+    if relative_path.is_absolute()
+        || relative_path
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return None;
+    }
+
+    let base = base_dir.canonicalize().ok()?;
+    let target = base.join(relative_path).canonicalize().ok()?;
+    target.starts_with(&base).then_some(target)
+}
+
+fn is_valid_package_name(value: &str) -> bool {
+    let mut chars = value.chars();
+    matches!(chars.next(), Some(ch) if ch.is_ascii_alphanumeric())
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '+' | '.' | '_' | ':' | '-'))
+}
+
+fn is_valid_flatpak_id(value: &str) -> bool {
+    if value.starts_with('-') || value.split('.').count() < 2 {
+        return false;
+    }
+
+    value.split('.').all(|part| {
+        let mut chars = part.chars();
+        matches!(chars.next(), Some(ch) if ch.is_ascii_alphanumeric() || ch == '_')
+            && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    })
+}
+
+fn is_valid_exec_name(value: &str) -> bool {
+    value.is_empty()
+        || (!value.starts_with('-')
+            && value
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '+' | '-')))
+}
+
+fn normalize_app_entry(entry: CsvAppEntry) -> Option<AppEntry> {
+    let category = entry.category.trim().to_owned();
+    let label = entry.label.trim().to_owned();
+    let package_name = entry.package_name.trim().to_owned();
+    let flatpak_id = entry.flatpak_id.trim().to_owned();
+    let exec_name = entry.exec_name.trim().to_owned();
+    let notes = entry.notes.trim().to_owned();
+
+    if category.is_empty() || label.is_empty() || (package_name.is_empty() && flatpak_id.is_empty())
+    {
+        return None;
+    }
+    if !package_name.is_empty() && !is_valid_package_name(&package_name) {
+        return None;
+    }
+    if !flatpak_id.is_empty() && !is_valid_flatpak_id(&flatpak_id) {
+        return None;
+    }
+    if !is_valid_exec_name(&exec_name) {
+        return None;
+    }
+
+    Some(AppEntry {
+        category,
+        label,
+        package_name,
+        flatpak_id,
+        exec_name,
+        notes,
+    })
 }
 
 fn load_apps(base_dir: &Path) -> Vec<AppEntry> {
-    let path = base_dir.join("apps_config.csv");
+    let Some(path) = resolve_resource_path(base_dir, "apps_config.csv") else {
+        eprintln!("apps_config.csv was not found in a trusted resource directory.");
+        return Vec::new();
+    };
     let Ok(mut reader) = csv::Reader::from_path(path) else {
         return Vec::new();
     };
 
     reader
         .deserialize::<CsvAppEntry>()
-        .filter_map(Result::ok)
-        .filter(|entry| !entry.category.trim().is_empty() && !entry.label.trim().is_empty())
-        .map(|entry| AppEntry {
-            category: entry.category.trim().to_owned(),
-            label: entry.label.trim().to_owned(),
-            package_name: entry.package_name.trim().to_owned(),
-            flatpak_id: entry.flatpak_id.trim().to_owned(),
-            exec_name: entry.exec_name.trim().to_owned(),
-            notes: entry.notes.trim().to_owned(),
+        .filter_map(|entry| match entry {
+            Ok(entry) => normalize_app_entry(entry),
+            Err(error) => {
+                eprintln!("Skipping invalid app catalog row: {error}");
+                None
+            }
         })
         .collect()
 }
@@ -2293,4 +2384,66 @@ fn strip_ansi(input: &str) -> String {
     }
 
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_safe_native_package_names() {
+        assert!(is_valid_package_name("firefox"));
+        assert!(is_valid_package_name("libxcb-render0-dev"));
+        assert!(is_valid_package_name("foo.bar+baz:amd64"));
+        assert!(!is_valid_package_name("-oProxyCommand=evil"));
+        assert!(!is_valid_package_name("bad package"));
+        assert!(!is_valid_package_name("bad;package"));
+        assert!(!is_valid_package_name(""));
+    }
+
+    #[test]
+    fn validates_safe_flatpak_ids() {
+        assert!(is_valid_flatpak_id("org.mozilla.firefox"));
+        assert!(is_valid_flatpak_id("com.visualstudio.code"));
+        assert!(!is_valid_flatpak_id("-bad.option"));
+        assert!(!is_valid_flatpak_id("bad"));
+        assert!(!is_valid_flatpak_id("bad id.with.space"));
+        assert!(!is_valid_flatpak_id(""));
+    }
+
+    #[test]
+    fn rejects_catalog_entries_without_install_targets() {
+        let entry = CsvAppEntry {
+            category: "Utilities".to_owned(),
+            label: "Broken".to_owned(),
+            package_name: "".to_owned(),
+            flatpak_id: "".to_owned(),
+            exec_name: "broken".to_owned(),
+            notes: "".to_owned(),
+        };
+
+        assert!(normalize_app_entry(entry).is_none());
+    }
+
+    #[test]
+    fn rejects_catalog_entries_with_option_like_targets() {
+        let entry = CsvAppEntry {
+            category: "Utilities".to_owned(),
+            label: "Dangerous".to_owned(),
+            package_name: "--bad-option".to_owned(),
+            flatpak_id: "".to_owned(),
+            exec_name: "dangerous".to_owned(),
+            notes: "".to_owned(),
+        };
+
+        assert!(normalize_app_entry(entry).is_none());
+    }
+
+    #[test]
+    fn resolves_resources_inside_base_dir_only() {
+        let base = std::env::current_dir().expect("test cwd");
+        assert!(resolve_resource_path(&base, "main.sh").is_some());
+        assert!(resolve_resource_path(&base, "../main.sh").is_none());
+        assert!(resolve_resource_path(&base, "/tmp/main.sh").is_none());
+    }
 }

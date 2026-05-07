@@ -267,10 +267,10 @@ impl ToolboxApp {
     }
 
     fn app_matches_filter(&self, entry: &AppEntry) -> bool {
-        if let Some(category) = &self.category_filter {
-            if &entry.category != category {
-                return false;
-            }
+        if let Some(category) = &self.category_filter
+            && &entry.category != category
+        {
+            return false;
         }
 
         let needle = self.search.trim().to_lowercase();
@@ -521,15 +521,12 @@ impl ToolboxApp {
                     if flat_text_button(ui, "Select All", accent_blue(), 92.0).clicked() {
                         self.select_visible_apps(true);
                     }
-                    search_field(
-                        ui,
-                        &mut self.search,
-                        if install {
-                            "Filter apps..."
-                        } else {
-                            "Filter apps..."
-                        },
-                    );
+                    let hint = if install {
+                        "Filter apps to install..."
+                    } else {
+                        "Filter apps to remove..."
+                    };
+                    search_field(ui, &mut self.search, hint);
                 });
             });
         });
@@ -2072,12 +2069,11 @@ fn page_subtitle(page: Page) -> &'static str {
 }
 
 fn find_base_dir() -> PathBuf {
-    if let Ok(exe) = env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            if dir.join("apps_config.csv").exists() {
-                return dir.to_path_buf();
-            }
-        }
+    if let Ok(exe) = env::current_exe()
+        && let Some(dir) = exe.parent()
+        && dir.join("apps_config.csv").exists()
+    {
+        return dir.to_path_buf();
     }
 
     env::current_dir().unwrap_or_else(|_| PathBuf::from("."))

@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-x86_64:
+    name: Build Linux x86_64 release asset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libxkbcommon-dev \
+            libssl-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build outputs
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --locked --release
+
+      - name: Package release bundle
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          package="linux-it-guy-toolbox-${version}-linux-x86_64"
+          mkdir -p "dist/${package}"
+          install -Dm755 target/release/linux-it-guy-toolbox "dist/${package}/linux-it-guy-toolbox"
+          install -Dm644 apps_config.csv "dist/${package}/apps_config.csv"
+          install -Dm755 main.sh "dist/${package}/main.sh"
+          install -Dm755 update-system.sh "dist/${package}/update-system.sh"
+          install -Dm755 install-swapfix.sh "dist/${package}/install-swapfix.sh"
+          install -Dm755 install-tlp.sh "dist/${package}/install-tlp.sh"
+          install -Dm755 install-powertop.sh "dist/${package}/install-powertop.sh"
+          install -Dm755 install-nala.sh "dist/${package}/install-nala.sh"
+          install -Dm755 install-stacer.sh "dist/${package}/install-stacer.sh"
+          install -Dm755 install-fastfetch.sh "dist/${package}/install-fastfetch.sh"
+          install -Dm755 enable-bluetooth.sh "dist/${package}/enable-bluetooth.sh"
+          install -Dm755 disable-bluetooth.sh "dist/${package}/disable-bluetooth.sh"
+          install -Dm755 "VMware Player Fix/vmware-fix.sh" "dist/${package}/VMware Player Fix/vmware-fix.sh"
+          install -Dm644 "VMware Player Fix/README.md" "dist/${package}/VMware Player Fix/README.md"
+          cp -R assets "dist/${package}/assets"
+          cp -R Screenshot "dist/${package}/Screenshot"
+          tar -C dist -czf "dist/${package}.tar.gz" "${package}"
+          (cd dist && sha256sum "${package}.tar.gz" > "${package}.tar.gz.sha256")
+
+      - name: Generate provenance summary
+        run: |
+          set -euo pipefail
+          {
+            echo "Release: ${GITHUB_REF_NAME}"
+            echo "Repository: ${GITHUB_REPOSITORY}"
+            echo "Commit: ${GITHUB_SHA}"
+            echo "Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo "SHA256:"
+            cat dist/*.sha256
+          } > dist/BUILD-PROVENANCE.txt
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
+            dist/BUILD-PROVENANCE.txt

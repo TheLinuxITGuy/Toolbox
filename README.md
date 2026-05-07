@@ -20,11 +20,22 @@ A fast Rust desktop app for installing/removing apps and running Linux admin tas
 
 ## 🚀 Quick Start
 
+Download the latest release archive from the GitHub Releases page, verify its checksum, then run the bundled binary:
+
+```bash
+sha256sum -c linux-it-guy-toolbox-<version>-linux-x86_64.tar.gz.sha256
+tar -xzf linux-it-guy-toolbox-<version>-linux-x86_64.tar.gz
+cd linux-it-guy-toolbox-<version>-linux-x86_64
+./linux-it-guy-toolbox
+```
+
+To build locally from source:
+
 ```bash
 git clone https://github.com/TheLinuxITGuy/Toolbox.git
 cd Toolbox
-chmod +x linux-it-guy-toolbox
-./linux-it-guy-toolbox
+cargo build --locked --release
+./target/release/linux-it-guy-toolbox
 ```
 
 ## 📖 Usage
@@ -57,7 +68,11 @@ rpm-ostree install -y git cargo rust libxcb-devel libxkbcommon-devel openssl-dev
 Apps are defined in `apps_config.csv` with columns:
 - `Category`, `Label`, `Package Name`, `Flatpak ID`, `Exec Name`, `Notes`
 
-Users can add applications be editing the `apps_config.csv` file.
+Users can add applications by editing the `apps_config.csv` file.
+
+## 🔐 Releases and checksums
+
+Release binaries are built by GitHub Actions from a tagged commit instead of being committed manually to the repository. See `RELEASE.md` for the release process and verification steps.
 
 ## ⚠️ Known Limitations
 

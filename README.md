@@ -9,8 +9,6 @@ A fast Rust desktop app for installing/removing apps and running Linux admin tas
 
 **Supports:** Arch, Debian, Fedora
 
-🛑 **Linux Mint 22.3** DON'T UPGRADE YET. Ubuntu 26.04 LTS works - wait for Linux Mint 23 based on 26.04 to be released
-
 ## ✨ What It Does
 
 - Install and remove native packages and Flatpak apps from one UI

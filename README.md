@@ -75,4 +75,4 @@ Users can add applications be editing the `apps_config.csv` file.
 
 ## 💝 Sponsor
 
-https://www.paypal.com/donate/?hosted_button_id=WPTX2BMBARSG2
+https://github.com/sponsors/TheLinuxITGuy

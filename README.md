@@ -39,7 +39,7 @@ git clone https://github.com/TheLinuxITGuy/Toolbox.git && cd Toolbox && chmod +x
 sudo pacman -Syu git rust cargo
 ```
 
-### Debian/Ubuntu/Linux Mint
+### Linux Mint / Debian
 ```bash
 sudo apt install -y git cargo rustc libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
 ```

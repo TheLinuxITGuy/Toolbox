@@ -19,10 +19,7 @@ A fast Rust desktop app for installing/removing apps and running Linux admin tas
 ## 🚀 Quick Start
 
 ```bash
-git clone https://github.com/TheLinuxITGuy/Toolbox.git
-cd Toolbox
-chmod +x linux-it-guy-toolbox
-./linux-it-guy-toolbox
+git clone https://github.com/TheLinuxITGuy/Toolbox.git && cd Toolbox && chmod +x linux-it-guy-toolbox && ./linux-it-guy-toolbox
 ```
 
 ## 📖 Usage
@@ -35,18 +32,25 @@ chmod +x linux-it-guy-toolbox
 
 ## 🔧 Requirements
 
-**Build:**
+**If the Quick Start script runs into any issues, your distribution might be missing a few foundational packages.**
+
+### Arch
 ```bash
-# Arch
 sudo pacman -Syu git rust cargo
+```
 
-# Debian/Ubuntu 26.04 LTS
+### Debian/Ubuntu/Linux Mint
+```bash
 sudo apt install -y git cargo rustc libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
+```
 
-# Fedora
+### Fedora
+```bash
 sudo dnf install -y git cargo rust libxcb-devel libxkbcommon-devel openssl-devel
+```
 
-# Silverblue / bazzite / ublue
+### Silverblue / bazzite / ublue
+```bash
 rpm-ostree install -y git cargo rust libxcb-devel libxkbcommon-devel openssl-devel
 ```
 

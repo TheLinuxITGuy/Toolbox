@@ -59,7 +59,7 @@ rpm-ostree install -y git cargo rust libxcb-devel libxkbcommon-devel openssl-dev
 Apps are defined in `apps_config.csv` with columns:
 - `Category`, `Label`, `Package Name`, `Flatpak ID`, `Exec Name`, `Notes`
 
-Users can add applications be editing the `apps_config.csv` file.
+Users can add applications by editing the `apps_config.csv` file.
 
 ## ⚠️ Known Limitations
 

@@ -7,7 +7,7 @@ A fast Rust desktop app for installing/removing apps and running Linux admin tas
 
 ![Preview](Screenshot/Screenshot7.png)
 
-> [!TIP]
+> [!NOTE]
 > #### Supported Distros
 > ![Static Badge](https://img.shields.io/badge/Arch-%231A365D?style=for-the-badge&logo=arch%20linux&logoColor=%23E9FC12)
 > ![Static Badge](https://img.shields.io/badge/Debian-%231A365D?style=for-the-badge&logo=debian&logoColor=%23E9FC12)

@@ -7,7 +7,11 @@ A fast Rust desktop app for installing/removing apps and running Linux admin tas
 
 ![Preview](Screenshot/Screenshot7.png)
 
-**Supports:** Arch, Debian, Fedora
+> [!TIP]
+> #### Supported Distros
+> ![Static Badge](https://img.shields.io/badge/Arch-%231A365D?style=for-the-badge&logo=arch%20linux&logoColor=%23E9FC12)
+> ![Static Badge](https://img.shields.io/badge/Debian-%231A365D?style=for-the-badge&logo=debian&logoColor=%23E9FC12)
+> ![Static Badge](https://img.shields.io/badge/Fedora-%231A365D?style=for-the-badge&logo=fedora&logoColor=%23E9FC12)
 
 ## ✨ What It Does
 
@@ -70,12 +74,6 @@ Users can add applications by editing the `apps_config.csv` file.
 ## 🎬 Video
 
 [![Video](https://img.youtube.com/vi/PJytFBO3seM/maxresdefault.jpg)](https://youtu.be/PJytFBO3seM)
-
-## 🖥️ Supported Distros
-
-![Static Badge](https://img.shields.io/badge/Arch-%231A365D?style=for-the-badge&logo=arch%20linux&logoColor=%23E9FC12)
-![Static Badge](https://img.shields.io/badge/Debian-%231A365D?style=for-the-badge&logo=debian&logoColor=%23E9FC12)
-![Static Badge](https://img.shields.io/badge/Fedora-%231A365D?style=for-the-badge&logo=fedora&logoColor=%23E9FC12)
 
 ## 💝 Sponsor
 

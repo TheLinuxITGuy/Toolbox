@@ -65,11 +65,10 @@ Apps are defined in `apps_config.csv` with columns:
 
 Users can add applications by editing the `apps_config.csv` file.
 
-## ⚠️ Known Limitations
-
-- Some apps are better as Flatpaks on certain distros
-- Some admin actions are distro-specific
-- Optional packages may not be in all default repositories
+>[!NOTE]
+> - Some apps are better as Flatpaks on certain distros
+> - Some admin actions are distro-specific
+> - Optional packages may not be in all default repositories
 
 ## 🎬 Video
 

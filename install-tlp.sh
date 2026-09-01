@@ -1,25 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=toolbox-lib.sh
+source "${SCRIPT_DIR}/toolbox-lib.sh"
+
 printf '[0;32m=====================================\n'
 printf '[1;32mThe Linux IT Guy Toolbox\n'
 printf '[1;32mInstalling TLP\n'
 printf '[0;32m=====================================[0m\n'
 
+require_package_name "tlp"
+
 if command -v apt-get >/dev/null 2>&1; then
+    require_package_name "tlp-rdw"
     if command -v nala >/dev/null 2>&1; then
         sudo nala update
         sudo nala install -y tlp tlp-rdw
         sudo nala install -f -y
     else
         sudo apt-get update
-        sudo apt-get install -y tlp tlp-rdw
+        sudo apt-get install -y -- tlp tlp-rdw
     fi
 elif command -v pacman >/dev/null 2>&1; then
-    sudo pacman -Syu --noconfirm
-    sudo pacman -S --noconfirm tlp
+    sudo pacman -S --needed --noconfirm -- tlp
 elif command -v dnf >/dev/null 2>&1; then
-    sudo dnf install -y tlp tlp-rdw
+    require_package_name "tlp-rdw"
+    sudo dnf install -y -- tlp tlp-rdw
 else
     echo "Unsupported distribution."
     exit 1

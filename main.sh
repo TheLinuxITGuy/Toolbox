@@ -2,6 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=toolbox-lib.sh
+source "${SCRIPT_DIR}/toolbox-lib.sh"
+
 ACTION=""
 APP_LABEL=""
 PACKAGE_NAME=""
@@ -56,9 +59,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$ACTION" || -z "$APP_LABEL" ]]; then
-    usage >&2
-    exit 1
+require_action "$ACTION"
+require_label "$APP_LABEL"
+
+if [[ -n "$PACKAGE_NAME" ]]; then
+    require_package_name "$PACKAGE_NAME"
+fi
+if [[ -n "$FLATPAK_ID" ]]; then
+    require_flatpak_id "$FLATPAK_ID"
+fi
+if [[ -n "$EXEC_NAME" ]]; then
+    require_exec_name "$EXEC_NAME"
 fi
 
 if [[ -z "$PACKAGE_NAME" && -z "$FLATPAK_ID" ]]; then
@@ -114,7 +125,7 @@ apt_install() {
         sudo nala install -y "$@"
         sudo nala install -f -y
     else
-        sudo apt-get install -y "$@"
+        sudo apt-get install -y -- "$@"
         sudo apt-get install -f -y
     fi
 }
@@ -123,13 +134,14 @@ apt_remove() {
     if [[ "$APT_TOOL" == "nala" ]]; then
         sudo nala remove -y "$@"
     else
-        sudo apt-get remove -y "$@"
+        sudo apt-get remove -y -- "$@"
         sudo apt-get autoremove -y
     fi
 }
 
 native_installed() {
     local package=$1
+    require_package_name "$package"
     case "$PACKAGE_MANAGER" in
         apt)
             dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q "install ok installed"
@@ -148,6 +160,7 @@ native_installed() {
 
 flatpak_installed() {
     local app_id=$1
+    require_flatpak_id "$app_id"
     flatpak info "$app_id" >/dev/null 2>&1
 }
 
@@ -163,11 +176,10 @@ ensure_flatpak() {
             apt_install flatpak
             ;;
         pacman)
-            sudo pacman -Syu --noconfirm
-            sudo pacman -S --noconfirm flatpak
+            sudo pacman -S --needed --noconfirm -- flatpak
             ;;
         dnf)
-            sudo dnf install -y flatpak
+            sudo dnf install -y -- flatpak
             ;;
         *)
             echo "Unsupported package manager." >&2
@@ -178,6 +190,7 @@ ensure_flatpak() {
 
 install_native() {
     local package=$1
+    require_package_name "$package"
     if native_installed "$package"; then
         echo "$package is already installed. Skipping installation."
         return 0
@@ -191,21 +204,21 @@ install_native() {
             apt_install "$package"
             ;;
         pacman)
-            if [[ "$package" == "steam" ]] && ! grep -q '^\[multilib\]' /etc/pacman.conf; then
-                echo "Enabling multilib repository for Steam..."
-                sudo sed -i '/\[multilib\]/,/Include/s/^#//' /etc/pacman.conf
+            if [[ "$package" == "steam" ]] && ! arch_multilib_enabled; then
+                echo "Steam on Arch requires the multilib repository. Enable [multilib] in /etc/pacman.conf, then retry." >&2
+                exit 1
             fi
-            sudo pacman -Syu --noconfirm
-            sudo pacman -S --noconfirm "$package"
+            sudo pacman -S --needed --noconfirm -- "$package"
             ;;
         dnf)
-            sudo dnf install -y "$package"
+            sudo dnf install -y -- "$package"
             ;;
     esac
 }
 
 remove_native() {
     local package=$1
+    require_package_name "$package"
     if ! native_installed "$package"; then
         echo "$package is not installed. Skipping removal."
         return 0
@@ -216,16 +229,17 @@ remove_native() {
             apt_remove "$package"
             ;;
         pacman)
-            sudo pacman -R --noconfirm "$package"
+            sudo pacman -R --noconfirm -- "$package"
             ;;
         dnf)
-            sudo dnf remove -y "$package"
+            sudo dnf remove -y -- "$package"
             ;;
     esac
 }
 
 install_flatpak_app() {
     local app_id=$1
+    require_flatpak_id "$app_id"
     ensure_flatpak
 
     if flatpak_installed "$app_id"; then
@@ -233,12 +247,13 @@ install_flatpak_app() {
         return 0
     fi
 
-    flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-    flatpak install -y flathub "$app_id"
+    flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+    flatpak install --user -y -- flathub "$app_id"
 }
 
 remove_flatpak_app() {
     local app_id=$1
+    require_flatpak_id "$app_id"
     ensure_flatpak
 
     if ! flatpak_installed "$app_id"; then
@@ -246,7 +261,7 @@ remove_flatpak_app() {
         return 0
     fi
 
-    flatpak uninstall -y "$app_id"
+    flatpak uninstall -y -- "$app_id"
 }
 
 print_header "${ACTION^} ${APP_LABEL}"

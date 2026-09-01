@@ -1,8 +1,11 @@
+mod catalog;
+mod runner;
+mod system;
+mod validate;
+
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    env, fs,
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
+    path::PathBuf,
     sync::mpsc::{self, Receiver, Sender},
     thread,
 };
@@ -13,7 +16,13 @@ use eframe::egui::{
     RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, TextureHandle, TextureOptions, Ui,
     Vec2, pos2, vec2,
 };
-use serde::Deserialize;
+
+use catalog::{AdminTask, AppEntry, Task, admin_tasks, find_base_dir, load_apps};
+use runner::{RunnerMessage, run_tasks};
+use system::{
+    command_output, detect_package_manager, distro_name, env_or_unknown, strip_ansi, uptime,
+};
+use validate::zeroize_string;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -29,82 +38,6 @@ fn main() -> eframe::Result {
         options,
         Box::new(|cc| Ok(Box::new(ToolboxApp::new(cc)))),
     )
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct CsvAppEntry {
-    #[serde(rename = "Category")]
-    category: String,
-    #[serde(rename = "Label")]
-    label: String,
-    #[serde(rename = "Package Name")]
-    package_name: String,
-    #[serde(rename = "Flatpak ID")]
-    flatpak_id: String,
-    #[serde(rename = "Exec Name")]
-    exec_name: String,
-    #[serde(rename = "Notes")]
-    notes: String,
-}
-
-#[derive(Clone, Debug)]
-struct AppEntry {
-    category: String,
-    label: String,
-    package_name: String,
-    flatpak_id: String,
-    exec_name: String,
-    notes: String,
-}
-
-impl AppEntry {
-    fn source_label(&self) -> &'static str {
-        if self.flatpak_id.is_empty() {
-            "native"
-        } else if self.package_name.is_empty() {
-            "flatpak"
-        } else {
-            "native + flatpak"
-        }
-    }
-
-    fn command(&self, base_dir: &Path, action: &str) -> Vec<String> {
-        vec![
-            "bash".to_owned(),
-            base_dir.join("main.sh").display().to_string(),
-            "--label".to_owned(),
-            self.label.clone(),
-            "--package".to_owned(),
-            self.package_name.clone(),
-            "--flatpak".to_owned(),
-            self.flatpak_id.clone(),
-            "--exec".to_owned(),
-            self.exec_name.clone(),
-            action.to_owned(),
-        ]
-    }
-}
-
-#[derive(Clone, Debug)]
-struct AdminTask {
-    category: String,
-    label: String,
-    script: String,
-}
-
-impl AdminTask {
-    fn command(&self, base_dir: &Path) -> Vec<String> {
-        vec![
-            "bash".to_owned(),
-            base_dir.join(&self.script).display().to_string(),
-        ]
-    }
-}
-
-#[derive(Clone, Debug)]
-struct Task {
-    description: String,
-    command: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -149,12 +82,6 @@ struct ToolboxApp {
     distro_icons: HashMap<&'static str, TextureHandle>,
 }
 
-#[derive(Debug)]
-enum RunnerMessage {
-    Log(String),
-    Done,
-}
-
 impl ToolboxApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         install_fonts(&cc.egui_ctx);
@@ -163,14 +90,27 @@ impl ToolboxApp {
         let distro_icons = load_distro_icons(&cc.egui_ctx);
 
         let base_dir = find_base_dir();
-        let apps = load_apps(&base_dir);
+        let catalog = load_apps(&base_dir);
         let distro_name = distro_name();
         let package_manager = detect_package_manager();
+
+        let mut log = "Process logs will appear here...".to_owned();
+        if let Some(error) = &catalog.error {
+            log = format!("[ERROR] {error}");
+        }
+        for warning in &catalog.warnings {
+            if log == "Process logs will appear here..." {
+                log.clear();
+            }
+            log.push('\n');
+            log.push_str("[WARN] ");
+            log.push_str(warning);
+        }
 
         Self {
             base_dir,
             page: Page::Install,
-            apps,
+            apps: catalog.apps,
             admin_tasks: admin_tasks(),
             install_selected: HashSet::new(),
             remove_selected: HashSet::new(),
@@ -179,7 +119,7 @@ impl ToolboxApp {
             category_filter: None,
             distro_name,
             package_manager,
-            log: "Process logs will appear here...".to_owned(),
+            log,
             password: String::new(),
             show_password_modal: false,
             is_running: false,
@@ -204,37 +144,51 @@ impl ToolboxApp {
         install + remove + admin
     }
 
-    fn selected_tasks(&self) -> Vec<Task> {
+    fn selected_tasks(&self) -> Result<Vec<Task>, Vec<String>> {
         let mut tasks = Vec::new();
+        let mut errors = Vec::new();
 
         for index in &self.install_selected {
             if let Some(entry) = self.apps.get(*index) {
-                tasks.push(Task {
-                    description: format!("Installing {}", entry.label),
-                    command: entry.command(&self.base_dir, "install"),
-                });
+                match entry.try_command(&self.base_dir, "install") {
+                    Ok(command) => tasks.push(Task {
+                        description: format!("Installing {}", entry.label),
+                        command,
+                    }),
+                    Err(error) => errors.push(format!("{}: {error}", entry.label)),
+                }
             }
         }
 
         for index in &self.remove_selected {
             if let Some(entry) = self.apps.get(*index) {
-                tasks.push(Task {
-                    description: format!("Removing {}", entry.label),
-                    command: entry.command(&self.base_dir, "remove"),
-                });
+                match entry.try_command(&self.base_dir, "remove") {
+                    Ok(command) => tasks.push(Task {
+                        description: format!("Removing {}", entry.label),
+                        command,
+                    }),
+                    Err(error) => errors.push(format!("{}: {error}", entry.label)),
+                }
             }
         }
 
         for index in &self.admin_selected {
             if let Some(task) = self.admin_tasks.get(*index) {
-                tasks.push(Task {
-                    description: format!("Running {}", task.label),
-                    command: task.command(&self.base_dir),
-                });
+                match task.try_command(&self.base_dir) {
+                    Ok(command) => tasks.push(Task {
+                        description: format!("Running {}", task.label),
+                        command,
+                    }),
+                    Err(error) => errors.push(format!("{}: {error}", task.label)),
+                }
             }
         }
 
-        tasks
+        if errors.is_empty() {
+            Ok(tasks)
+        } else {
+            Err(errors)
+        }
     }
 
     fn clear_selection(&mut self) {
@@ -267,10 +221,10 @@ impl ToolboxApp {
     }
 
     fn app_matches_filter(&self, entry: &AppEntry) -> bool {
-        if let Some(category) = &self.category_filter {
-            if &entry.category != category {
-                return false;
-            }
+        if let Some(category) = &self.category_filter
+            && &entry.category != category
+        {
+            return false;
         }
 
         let needle = self.search.trim().to_lowercase();
@@ -285,13 +239,27 @@ impl ToolboxApp {
     }
 
     fn run_selected(&mut self, ctx: &Context) {
-        let tasks = self.selected_tasks();
-        if tasks.is_empty() || self.is_running {
+        if self.is_running {
             return;
         }
 
+        let tasks = match self.selected_tasks() {
+            Ok(tasks) if !tasks.is_empty() => tasks,
+            Ok(_) => return,
+            Err(errors) => {
+                self.log = "[ERROR] Refusing to run tasks with invalid identifiers.".to_owned();
+                for error in errors {
+                    self.log.push('\n');
+                    self.log.push_str(&error);
+                }
+                self.log_revision = self.log_revision.saturating_add(1);
+                zeroize_string(&mut self.password);
+                return;
+            }
+        };
+
         let (tx, rx) = mpsc::channel();
-        let password = self.password.clone();
+        let password = std::mem::take(&mut self.password);
         self.log = format!("Queued {} task(s)...", tasks.len());
         self.log_revision = self.log_revision.saturating_add(1);
         self.is_running = true;
@@ -325,7 +293,7 @@ impl ToolboxApp {
 
         if done {
             self.is_running = false;
-            self.password.clear();
+            zeroize_string(&mut self.password);
             self.tx = None;
             self.rx = None;
             self.log.push_str("\n\n[DONE] All tasks finished.");
@@ -417,7 +385,7 @@ impl ToolboxApp {
     }
 
     fn install_remove_page(&mut self, ui: &mut Ui, install: bool) {
-        self.toolbar(ui, install);
+        self.toolbar(ui);
         ui.add_space(10.0);
 
         let mut categories: BTreeMap<String, Vec<usize>> = BTreeMap::new();
@@ -483,7 +451,7 @@ impl ToolboxApp {
         ui.add_space(6.0);
     }
 
-    fn toolbar(&mut self, ui: &mut Ui, install: bool) {
+    fn toolbar(&mut self, ui: &mut Ui) {
         toolbar_frame().show(ui, |ui| {
             ui.horizontal(|ui| {
                 let actions_width = 420.0;
@@ -521,15 +489,7 @@ impl ToolboxApp {
                     if flat_text_button(ui, "Select All", accent_blue(), 92.0).clicked() {
                         self.select_visible_apps(true);
                     }
-                    search_field(
-                        ui,
-                        &mut self.search,
-                        if install {
-                            "Filter apps..."
-                        } else {
-                            "Filter apps..."
-                        },
-                    );
+                    search_field(ui, &mut self.search, "Filter apps...");
                 });
             });
         });
@@ -756,18 +716,13 @@ impl ToolboxApp {
     fn system_info_page(&mut self, ui: &mut Ui) {
         let rows = [
             ("OS", self.distro_name.clone()),
-            ("Host", command_output("hostname")),
-            ("Kernel", command_output("uname -r")),
+            ("Host", command_output("hostname", &[])),
+            ("Kernel", command_output("uname", &["-r"])),
             ("Uptime", uptime()),
-            (
-                "Shell",
-                env::var("SHELL").unwrap_or_else(|_| "Unknown".to_owned()),
-            ),
+            ("Shell", env_or_unknown(&["SHELL"])),
             (
                 "DE/WM",
-                env::var("XDG_CURRENT_DESKTOP")
-                    .or_else(|_| env::var("DESKTOP_SESSION"))
-                    .unwrap_or_else(|_| "Unknown".to_owned()),
+                env_or_unknown(&["XDG_CURRENT_DESKTOP", "DESKTOP_SESSION"]),
             ),
             ("Package Manager", self.package_manager.clone()),
             ("App Directory", self.base_dir.display().to_string()),
@@ -855,7 +810,7 @@ impl ToolboxApp {
             let showing_placeholder = self.log == "Process logs will appear here...";
             Frame::new()
                 .fill(Color32::from_rgb(8, 10, 11))
-                .stroke(Stroke::new(1.0, Color32::from_rgb(42, 48, 52)))
+                .stroke(Stroke::new(1.0_f32, Color32::from_rgb(42, 48, 52)))
                 .inner_margin(8.0)
                 .show(ui, |ui| {
                     if showing_placeholder {
@@ -905,7 +860,7 @@ impl ToolboxApp {
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
                         if ui.button("Cancel").clicked() {
-                            self.password.clear();
+                            zeroize_string(&mut self.password);
                             self.show_password_modal = false;
                         }
                         if ui
@@ -931,7 +886,7 @@ impl eframe::App for ToolboxApp {
             .frame(
                 Frame::new()
                     .fill(Color32::from_rgb(21, 25, 30))
-                    .stroke(Stroke::new(1.0, border()))
+                    .stroke(Stroke::new(1.0_f32, border()))
                     .inner_margin(14.0),
             )
             .show_inside(ui, |ui| self.sidebar(ui));
@@ -940,7 +895,7 @@ impl eframe::App for ToolboxApp {
             .frame(
                 Frame::new()
                     .fill(background())
-                    .stroke(Stroke::new(1.0, border()))
+                    .stroke(Stroke::new(1.0_f32, border()))
                     .inner_margin(egui::Margin::symmetric(16, 14)),
             )
             .show_inside(ui, |ui| self.header(ui));
@@ -950,7 +905,7 @@ impl eframe::App for ToolboxApp {
             .frame(
                 Frame::new()
                     .fill(background())
-                    .stroke(Stroke::new(1.0, border()))
+                    .stroke(Stroke::new(1.0_f32, border()))
                     .inner_margin(egui::Margin::symmetric(14, 10)),
             )
             .show_inside(ui, |ui| {
@@ -1145,7 +1100,7 @@ fn apply_theme(ctx: &Context) {
     style.visuals.window_fill = background();
     style.visuals.panel_fill = background();
     style.visuals.override_text_color = Some(primary_text());
-    style.visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, primary_text());
+    style.visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, primary_text());
     style.visuals.widgets.inactive.bg_fill = Color32::from_rgb(32, 38, 44);
     style.visuals.widgets.hovered.bg_fill = Color32::from_rgb(42, 50, 58);
     style.visuals.widgets.active.bg_fill = accent_blue();
@@ -1191,7 +1146,7 @@ fn nav_aux_button(ui: &mut Ui, label: &str, symbol: &str) -> egui::Response {
     }
     let icon = Rect::from_min_size(rect.min + vec2(20.0, 9.0), vec2(22.0, 22.0));
     ui.painter()
-        .circle_stroke(icon.center(), 10.0, Stroke::new(1.5, subtle_text()));
+        .circle_stroke(icon.center(), 10.0, Stroke::new(1.5_f32, subtle_text()));
     ui.painter().text(
         icon.center(),
         Align2::CENTER_CENTER,
@@ -1220,7 +1175,7 @@ fn chip(ui: &mut Ui, label: &str, selected: bool, icon: Option<&TextureHandle>) 
     ui.painter().rect_stroke(
         rect,
         7.0,
-        Stroke::new(1.0, if selected { accent_blue() } else { border() }),
+        Stroke::new(1.0_f32, if selected { accent_blue() } else { border() }),
         StrokeKind::Inside,
     );
     distro_mark(
@@ -1284,7 +1239,7 @@ fn search_field(ui: &mut Ui, search: &mut String, hint: &str) {
     let search_fill = Color32::from_rgb(31, 35, 41);
     let response = Frame::new()
         .fill(search_fill)
-        .stroke(Stroke::new(1.0, Color32::from_rgb(55, 63, 72)))
+        .stroke(Stroke::new(1.0_f32, Color32::from_rgb(55, 63, 72)))
         .corner_radius(5.0)
         .inner_margin(egui::Margin::symmetric(8, 0))
         .show(ui, |ui| {
@@ -1312,13 +1267,13 @@ fn search_field(ui: &mut Ui, search: &mut String, hint: &str) {
 
 fn paint_search_icon(painter: &Painter, rect: Rect) {
     let center = pos2(rect.left() + 8.0, rect.center().y - 1.0);
-    painter.circle_stroke(center, 5.0, Stroke::new(1.4, subtle_text()));
+    painter.circle_stroke(center, 5.0, Stroke::new(1.4_f32, subtle_text()));
     painter.line_segment(
         [
             pos2(center.x + 4.0, center.y + 4.0),
             pos2(center.x + 9.0, center.y + 9.0),
         ],
-        Stroke::new(1.4, subtle_text()),
+        Stroke::new(1.4_f32, subtle_text()),
     );
 }
 
@@ -1347,28 +1302,28 @@ fn section_header(ui: &mut Ui, title: &str, count: usize) {
 fn toolbar_frame() -> Frame {
     Frame::new()
         .fill(Color32::from_rgb(24, 29, 34))
-        .stroke(Stroke::new(1.0, border()))
+        .stroke(Stroke::new(1.0_f32, border()))
         .inner_margin(egui::Margin::symmetric(12, 7))
 }
 
 fn summary_frame() -> Frame {
     Frame::new()
         .fill(Color32::from_rgb(25, 30, 36))
-        .stroke(Stroke::new(1.0, border()))
+        .stroke(Stroke::new(1.0_f32, border()))
         .inner_margin(egui::Margin::symmetric(12, 8))
 }
 
 fn log_frame() -> Frame {
     Frame::new()
         .fill(Color32::from_rgb(20, 24, 29))
-        .stroke(Stroke::new(1.0, border()))
+        .stroke(Stroke::new(1.0_f32, border()))
         .inner_margin(egui::Margin::symmetric(10, 8))
 }
 
 fn panel_frame() -> Frame {
     Frame::new()
         .fill(panel())
-        .stroke(Stroke::new(1.0, border()))
+        .stroke(Stroke::new(1.0_f32, border()))
         .inner_margin(12.0)
 }
 
@@ -1384,7 +1339,7 @@ fn paint_row_background(painter: &Painter, rect: Rect, hovered: bool, selected: 
     painter.rect_stroke(
         rect,
         4.0,
-        Stroke::new(1.0, if selected { accent_blue() } else { border() }),
+        Stroke::new(1.0_f32, if selected { accent_blue() } else { border() }),
         StrokeKind::Inside,
     );
 }
@@ -1403,7 +1358,7 @@ fn paint_checkbox(painter: &Painter, rect: Rect, selected: bool) {
         rect,
         3.0,
         Stroke::new(
-            1.0,
+            1.0_f32,
             if selected {
                 accent_blue_light()
             } else {
@@ -1416,8 +1371,8 @@ fn paint_checkbox(painter: &Painter, rect: Rect, selected: bool) {
         let a = pos2(rect.left() + 4.0, rect.center().y);
         let b = pos2(rect.left() + 7.0, rect.bottom() - 5.0);
         let c = pos2(rect.right() - 4.0, rect.top() + 5.0);
-        painter.line_segment([a, b], Stroke::new(2.0, Color32::WHITE));
-        painter.line_segment([b, c], Stroke::new(2.0, Color32::WHITE));
+        painter.line_segment([a, b], Stroke::new(2.0_f32, Color32::WHITE));
+        painter.line_segment([b, c], Stroke::new(2.0_f32, Color32::WHITE));
     }
 }
 
@@ -1442,7 +1397,7 @@ fn paint_app_icon(painter: &Painter, rect: Rect, label: &str, icon: Option<&Text
     painter.circle_stroke(
         rect.center(),
         rect.width() / 2.0,
-        Stroke::new(1.0, Color32::from_white_alpha(80)),
+        Stroke::new(1.0_f32, Color32::from_white_alpha(80)),
     );
     painter.text(
         rect.center(),
@@ -1471,10 +1426,10 @@ fn paint_admin_icon(painter: &Painter, rect: Rect, label: &str) {
     painter.circle_stroke(
         rect.center(),
         rect.width() / 2.0,
-        Stroke::new(1.0, Color32::from_white_alpha(80)),
+        Stroke::new(1.0_f32, Color32::from_white_alpha(80)),
     );
 
-    let stroke = Stroke::new(1.7, Color32::WHITE);
+    let stroke = Stroke::new(1.7_f32, Color32::WHITE);
     let c = rect.center();
     match label {
         "Enable Bluetooth" | "Disable Bluetooth" => {
@@ -1510,7 +1465,7 @@ fn paint_admin_icon(painter: &Painter, rect: Rect, label: &str) {
                         pos2(rect.left() + 6.0, rect.bottom() - 6.0),
                         pos2(rect.right() - 6.0, rect.top() + 6.0),
                     ],
-                    Stroke::new(2.1, Color32::WHITE),
+                    Stroke::new(2.1_f32, Color32::WHITE),
                 );
             }
         }
@@ -1622,7 +1577,7 @@ fn paint_badge(painter: &Painter, center: Pos2, label: &str) {
         Color32::from_rgb(76, 120, 189)
     };
     painter.rect_filled(rect, 5.0, fill);
-    painter.rect_stroke(rect, 5.0, Stroke::new(1.0, stroke), StrokeKind::Inside);
+    painter.rect_stroke(rect, 5.0, Stroke::new(1.0_f32, stroke), StrokeKind::Inside);
     painter.text(
         rect.center(),
         Align2::CENTER_CENTER,
@@ -1646,7 +1601,7 @@ fn toolbox_icon(ui: &mut Ui, size: f32) {
     painter.rect_stroke(
         body,
         3.0,
-        Stroke::new(1.8, primary_text()),
+        Stroke::new(1.8_f32, primary_text()),
         StrokeKind::Inside,
     );
     painter.line_segment(
@@ -1654,7 +1609,7 @@ fn toolbox_icon(ui: &mut Ui, size: f32) {
             pos2(body.left(), body.top() + 6.0),
             pos2(body.right(), body.top() + 6.0),
         ],
-        Stroke::new(1.4, primary_text()),
+        Stroke::new(1.4_f32, primary_text()),
     );
     painter.rect_stroke(
         Rect::from_min_size(
@@ -1662,7 +1617,7 @@ fn toolbox_icon(ui: &mut Ui, size: f32) {
             vec2(10.0, 6.0),
         ),
         2.0,
-        Stroke::new(1.5, primary_text()),
+        Stroke::new(1.5_f32, primary_text()),
         StrokeKind::Inside,
     );
 }
@@ -1677,7 +1632,7 @@ fn page_icon(ui: &mut Ui, page: Page, size: f32, filled: bool) {
 }
 
 fn paint_page_symbol(painter: &Painter, rect: Rect, page: Page, color: Color32) {
-    let stroke = Stroke::new(1.8, color);
+    let stroke = Stroke::new(1.8_f32, color);
     match page {
         Page::Install => {
             painter.line_segment(
@@ -1782,7 +1737,7 @@ fn paint_page_symbol(painter: &Painter, rect: Rect, page: Page, color: Color32) 
 fn category_icon(ui: &mut Ui, title: &str) {
     let (rect, _) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::hover());
     let painter = ui.painter();
-    let stroke = Stroke::new(1.4, subtle_text());
+    let stroke = Stroke::new(1.4_f32, subtle_text());
     match title {
         "Browsers" => {
             painter.circle_stroke(rect.center(), 9.0, stroke);
@@ -1840,7 +1795,7 @@ fn small_terminal_icon(ui: &mut Ui) {
     ui.painter().rect_stroke(
         rect.shrink(2.0),
         2.0,
-        Stroke::new(1.0, subtle_text()),
+        Stroke::new(1.0_f32, subtle_text()),
         StrokeKind::Inside,
     );
     ui.painter().text(
@@ -2069,228 +2024,4 @@ fn page_subtitle(page: Page) -> &'static str {
         Page::Administration => "Run common Linux maintenance and power tasks.",
         Page::SystemInfo => "Inspect local system and runtime details.",
     }
-}
-
-fn find_base_dir() -> PathBuf {
-    if let Ok(exe) = env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            if dir.join("apps_config.csv").exists() {
-                return dir.to_path_buf();
-            }
-        }
-    }
-
-    env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-}
-
-fn load_apps(base_dir: &Path) -> Vec<AppEntry> {
-    let path = base_dir.join("apps_config.csv");
-    let Ok(mut reader) = csv::Reader::from_path(path) else {
-        return Vec::new();
-    };
-
-    reader
-        .deserialize::<CsvAppEntry>()
-        .filter_map(Result::ok)
-        .filter(|entry| !entry.category.trim().is_empty() && !entry.label.trim().is_empty())
-        .map(|entry| AppEntry {
-            category: entry.category.trim().to_owned(),
-            label: entry.label.trim().to_owned(),
-            package_name: entry.package_name.trim().to_owned(),
-            flatpak_id: entry.flatpak_id.trim().to_owned(),
-            exec_name: entry.exec_name.trim().to_owned(),
-            notes: entry.notes.trim().to_owned(),
-        })
-        .collect()
-}
-
-fn admin_tasks() -> Vec<AdminTask> {
-    [
-        (
-            "Power Management",
-            "Enable Bluetooth",
-            "enable-bluetooth.sh",
-        ),
-        (
-            "Power Management",
-            "Disable Bluetooth",
-            "disable-bluetooth.sh",
-        ),
-        ("Power Management", "TLP (Laptops)", "install-tlp.sh"),
-        ("Power Management", "Powertop", "install-powertop.sh"),
-        ("System", "Update System", "update-system.sh"),
-        (
-            "System",
-            "nala (rank mirrors) - Debian only",
-            "install-nala.sh",
-        ),
-        ("System", "Stacer", "install-stacer.sh"),
-        ("System", "SWAP Fix", "install-swapfix.sh"),
-        ("System", "Fastfetch", "install-fastfetch.sh"),
-    ]
-    .into_iter()
-    .map(|(category, label, script)| AdminTask {
-        category: category.to_owned(),
-        label: label.to_owned(),
-        script: script.to_owned(),
-    })
-    .collect()
-}
-
-fn run_tasks(tasks: Vec<Task>, password: String, tx: Sender<RunnerMessage>) {
-    for task in tasks {
-        let _ = tx.send(RunnerMessage::Log(format!(
-            "[INFO] Starting: {}",
-            task.description
-        )));
-        let _ = tx.send(RunnerMessage::Log(format!(
-            "Command: sudo -S {}",
-            task.command.join(" ")
-        )));
-
-        let Some((program, args)) = task.command.split_first() else {
-            let _ = tx.send(RunnerMessage::Log("[ERROR] Empty command.".to_owned()));
-            continue;
-        };
-
-        let output = Command::new("sudo")
-            .arg("-S")
-            .arg(program)
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .and_then(|mut child| {
-                if let Some(stdin) = child.stdin.as_mut() {
-                    use std::io::Write;
-                    stdin.write_all(format!("{password}\n").as_bytes())?;
-                }
-                child.wait_with_output()
-            });
-
-        match output {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                for line in stdout.lines().chain(stderr.lines()) {
-                    let _ = tx.send(RunnerMessage::Log(line.to_owned()));
-                }
-                if output.status.success() {
-                    let _ = tx.send(RunnerMessage::Log(format!(
-                        "[SUCCESS] {} completed successfully.",
-                        task.description
-                    )));
-                } else {
-                    let code = output
-                        .status
-                        .code()
-                        .map_or_else(|| "unknown".to_owned(), |code| code.to_string());
-                    let _ = tx.send(RunnerMessage::Log(format!(
-                        "[ERROR] {} failed with return code {code}.",
-                        task.description
-                    )));
-                }
-            }
-            Err(error) => {
-                let _ = tx.send(RunnerMessage::Log(format!(
-                    "[EXCEPTION] Failed to run {}: {error}",
-                    task.description
-                )));
-            }
-        }
-    }
-
-    let _ = tx.send(RunnerMessage::Done);
-}
-
-fn distro_name() -> String {
-    let Ok(contents) = fs::read_to_string("/etc/os-release") else {
-        return "Linux".to_owned();
-    };
-
-    let mut fallback = None;
-    for line in contents.lines() {
-        if let Some(value) = line.strip_prefix("PRETTY_NAME=") {
-            return value.trim_matches('"').to_owned();
-        }
-        if let Some(value) = line.strip_prefix("NAME=") {
-            fallback = Some(value.trim_matches('"').to_owned());
-        }
-    }
-    fallback.unwrap_or_else(|| "Linux".to_owned())
-}
-
-fn detect_package_manager() -> String {
-    for manager in ["apt-get", "pacman", "dnf"] {
-        if Command::new("sh")
-            .arg("-c")
-            .arg(format!("command -v {manager} >/dev/null 2>&1"))
-            .status()
-            .map(|status| status.success())
-            .unwrap_or(false)
-        {
-            return manager.to_owned();
-        }
-    }
-    "unknown".to_owned()
-}
-
-fn command_output(command: &str) -> String {
-    let mut parts = command.split_whitespace();
-    let Some(program) = parts.next() else {
-        return "Unknown".to_owned();
-    };
-    Command::new(program)
-        .args(parts)
-        .output()
-        .ok()
-        .and_then(|output| String::from_utf8(output.stdout).ok())
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "Unknown".to_owned())
-}
-
-fn uptime() -> String {
-    let Ok(contents) = fs::read_to_string("/proc/uptime") else {
-        return "Unknown".to_owned();
-    };
-    let Ok(seconds) = contents
-        .split_whitespace()
-        .next()
-        .unwrap_or("0")
-        .parse::<f64>()
-    else {
-        return "Unknown".to_owned();
-    };
-
-    let total = seconds as u64;
-    let days = total / 86_400;
-    let hours = (total % 86_400) / 3_600;
-    let minutes = (total % 3_600) / 60;
-
-    match (days, hours) {
-        (0, 0) => format!("{minutes}m"),
-        (0, _) => format!("{hours}h {minutes}m"),
-        _ => format!("{days}d {hours}h {minutes}m"),
-    }
-}
-
-fn strip_ansi(input: &str) -> String {
-    let mut output = String::with_capacity(input.len());
-    let mut chars = input.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        if ch == '\u{1b}' {
-            for next in chars.by_ref() {
-                if next.is_ascii_alphabetic() {
-                    break;
-                }
-            }
-        } else {
-            output.push(ch);
-        }
-    }
-
-    output
 }

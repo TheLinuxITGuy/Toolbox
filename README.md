@@ -22,9 +22,18 @@ A fast Rust desktop app for installing/removing apps and running Linux admin tas
 
 ## 🚀 Quick Start
 
+Build from source (Rust 1.92 or newer):
+
 ```bash
-git clone https://github.com/TheLinuxITGuy/Toolbox.git && cd Toolbox && chmod +x linux-it-guy-toolbox && ./linux-it-guy-toolbox
+git clone https://github.com/TheLinuxITGuy/Toolbox.git
+cd Toolbox
+cargo build --release
+./target/release/linux-it-guy-toolbox
 ```
+
+Prebuilt binaries are published on the [GitHub Releases](https://github.com/TheLinuxITGuy/Toolbox/releases) page.
+
+If your distribution's `rustc` package is older than 1.92, install a current toolchain with [rustup](https://rustup.rs/).
 
 ## 📖 Usage
 

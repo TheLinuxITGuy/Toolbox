@@ -8,7 +8,9 @@ printf '[0;32m=====================================[0m\n'
 
 update_flatpak() {
     if command -v flatpak >/dev/null 2>&1; then
-        echo "Updating Flatpak..."
+        echo "Updating user Flatpaks..."
+        flatpak update -y
+        echo "Updating system Flatpaks..."
         sudo flatpak update -y
     else
         echo "Flatpak is not installed. Skipping Flatpak update."

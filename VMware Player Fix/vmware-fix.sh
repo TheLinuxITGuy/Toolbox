@@ -1,46 +1,49 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo -e "\033[0;32m====================================="
-echo -e "\033[1;32mThe Linux IT Guy - Linux Mint Scripts"
-echo -e "\033[1;32mVMware Player Fix"
-echo -e "\033[0;32m=====================================\033[0m"
+printf '[0;32m=====================================\n'
+printf '[1;32mThe Linux IT Guy - Linux Mint Scripts\n'
+printf '[1;32mVMware Player Fix\n'
+printf '[0;32m=====================================[0m\n'
 
-# Change permissions to make the bundle executable
-chmod u+x ~/Downloads/VMware-*.bundle
+DOWNLOADS="${HOME}/Downloads"
+MODULE_VERSION="workstation-17.5.0"
+MODULE_URL="https://github.com/mkubecek/vmware-host-modules/archive/${MODULE_VERSION}.tar.gz"
+MODULE_ARCHIVE="${DOWNLOADS}/${MODULE_VERSION}.tar.gz"
+MODULE_DIR="${DOWNLOADS}/vmware-host-modules-${MODULE_VERSION}"
 
-# Check if VMware Player bundle exists in ~/Downloads
-if [ ! -f ~/Downloads/VMware-*.bundle ]; then
-    echo "Run the script from ~/Downloads/"
+if [[ ! -d "$DOWNLOADS" ]]; then
+    echo "Expected ${DOWNLOADS} to exist and contain the VMware Player bundle." >&2
     exit 1
 fi
 
-# Run the VMware Player installer
-sudo ~/Downloads/VMware-*.bundle
+shopt -s nullglob
+bundles=("${DOWNLOADS}"/VMware-*.bundle)
+if [[ ${#bundles[@]} -ne 1 ]]; then
+    echo "Place exactly one VMware-*.bundle file in ${DOWNLOADS} and rerun this script." >&2
+    exit 1
+fi
 
-# Change directory to ~/Downloads
-cd ~/Downloads 
+bundle=${bundles[0]}
+chmod u+x "$bundle"
+sudo "$bundle"
 
-# Download the VMware host modules
-wget https://github.com/mkubecek/vmware-host-modules/archive/workstation-17.5.0.tar.gz
+wget -O "$MODULE_ARCHIVE" "$MODULE_URL"
+tar -xzf "$MODULE_ARCHIVE" -C "$DOWNLOADS"
 
-# Extract the tarball
-tar -xzf workstation-17.5.0.tar.gz
+if [[ ! -d "$MODULE_DIR/vmmon-only" || ! -d "$MODULE_DIR/vmnet-only" ]]; then
+    echo "VMware host modules archive did not contain the expected directories." >&2
+    exit 1
+fi
 
-# Change directory to the extracted folder
-cd vmware-host-modules-workstation-17.5.0/
+tar -cf "${MODULE_DIR}/vmmon.tar" -C "$MODULE_DIR" vmmon-only
+tar -cf "${MODULE_DIR}/vmnet.tar" -C "$MODULE_DIR" vmnet-only
 
-# Create tarballs for vmmon and vmnet
-tar -cf vmmon.tar vmmon-only/
-tar -cf vmnet.tar vmnet-only/
-
-# Copy the tarballs to the VMware modules source directory
-sudo cp -v vmmon.tar vmnet.tar  /usr/lib/vmware/modules/source/
-
-# Run VMware modconfig to install all modules
+sudo cp -v "${MODULE_DIR}/vmmon.tar" "${MODULE_DIR}/vmnet.tar" /usr/lib/vmware/modules/source/
 sudo vmware-modconfig --console --install-all
 
-echo -e "\033[0;32m====================================="
-echo -e "\033[1;32mThe Linux IT Guy - Linux Mint Scripts"
-echo -e "\033[1;32mVMware Player Fix - Complete"
-echo -e "\033[1;32mFire up Super->Administration->VMware Player to complete the installation."
-echo -e "\033[0;32m=====================================\033[0m"
+printf '[0;32m=====================================\n'
+printf '[1;32mThe Linux IT Guy - Linux Mint Scripts\n'
+printf '[1;32mVMware Player Fix - Complete\n'
+printf '[1;32mFire up Super->Administration->VMware Player to complete the installation.\n'
+printf '[0;32m=====================================[0m\n'

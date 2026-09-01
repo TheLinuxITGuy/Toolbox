@@ -2,6 +2,7 @@
 name = "linux-it-guy-toolbox"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.92"
 description = "A modern Rust desktop toolbox for Linux app installs and admin tasks."
 license = "MIT"
 

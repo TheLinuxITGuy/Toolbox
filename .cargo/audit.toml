@@ -1,0 +1,11 @@
+# Remaining advisories are transitive through eframe 0.34 / winit / wayland-scanner.
+# They are documented in the security cleanup PR. Do not ignore new findings.
+[advisories]
+ignore = [
+    # quick-xml 0.39.2 via wayland-scanner 0.31.10 (build-time XML protocol parser).
+    # wayland-scanner pins ^0.39; upgrading eframe to pick up a newer scanner also
+    # raises MSRV past 1.92 and changes the UI stack. The crate is not used on
+    # untrusted user input in this app.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+]

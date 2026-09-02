@@ -134,6 +134,9 @@ pub struct Palette {
     pub badge_flatpak_stroke: Color32,
     pub badge_flatpak_text: Color32,
     pub modal_fill: Color32,
+    pub modal_text: Color32,
+    pub cancel_fill: Color32,
+    pub cancel_text: Color32,
     pub theme_icon: Color32,
 }
 
@@ -194,6 +197,9 @@ impl Palette {
             badge_flatpak_stroke: mix(NAVY, PALE_SKY, 0.20),
             badge_flatpak_text: NAVY,
             modal_fill: mix(PALE_SKY, NAVY, 0.06),
+            modal_text: NAVY,
+            cancel_fill: mix(PALE_SKY, Color32::WHITE, 0.35),
+            cancel_text: NAVY,
             theme_icon: ACCENT,
         }
     }
@@ -254,6 +260,9 @@ impl Palette {
             badge_flatpak_stroke: mix(PALE_SKY, NAVY, 0.20),
             badge_flatpak_text: PALE_SKY,
             modal_fill: mix(PALE_SKY, Color32::WHITE, 0.35),
+            modal_text: NAVY,
+            cancel_fill: mix(PALE_SKY, Color32::WHITE, 0.55),
+            cancel_text: NAVY,
             theme_icon: NAVY,
         }
     }
@@ -476,6 +485,16 @@ mod tests {
             assert!(
                 contrast_ratio(palette.filter_selected_text, palette.filter_selected_fill) >= 4.5,
                 "{:?} filter chip contrast",
+                palette.mode
+            );
+            assert!(
+                contrast_ratio(palette.modal_text, palette.modal_fill) >= 4.5,
+                "{:?} modal text contrast",
+                palette.mode
+            );
+            assert!(
+                contrast_ratio(palette.cancel_text, palette.cancel_fill) >= 4.5,
+                "{:?} cancel button contrast",
                 palette.mode
             );
         }

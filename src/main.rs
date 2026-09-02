@@ -904,11 +904,18 @@ impl ToolboxApp {
                 });
         });
 
+        if self.show_password_modal && ctx.input(|input| input.key_pressed(Key::Escape)) {
+            zeroize_string(&mut self.password);
+            self.show_password_modal = false;
+        }
+
         if self.show_password_modal {
+            let mut open = true;
             egui::Window::new("Sudo Authentication")
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .open(&mut open)
                 .frame(
                     Frame::new()
                         .fill(palette.modal_fill)
@@ -918,24 +925,15 @@ impl ToolboxApp {
                 )
                 .show(ctx, |ui| {
                     ui.label(
-                        RichText::new("Enter your sudo password to run the selected tasks.").color(
-                            if palette.mode == ThemeMode::Light {
-                                palette.chrome_text
-                            } else {
-                                palette.on_surface
-                            },
-                        ),
+                        RichText::new("Enter your sudo password to run the selected tasks.")
+                            .color(palette.modal_text),
                     );
                     ui.add_space(8.0);
                     let response = ui.add(
                         TextEdit::singleline(&mut self.password)
                             .password(true)
                             .desired_width(280.0)
-                            .text_color(if palette.mode == ThemeMode::Light {
-                                palette.chrome_text
-                            } else {
-                                palette.on_surface
-                            })
+                            .text_color(palette.on_surface)
                             .background_color(palette.input_fill),
                     );
                     if response.lost_focus() && ui.input(|input| input.key_pressed(Key::Enter)) {
@@ -945,16 +943,13 @@ impl ToolboxApp {
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
                         if ui
-                            .add(
-                                Button::new(RichText::new("Cancel").color(
-                                    if palette.mode == ThemeMode::Light {
-                                        palette.chrome_text
-                                    } else {
-                                        palette.on_surface
-                                    },
-                                ))
-                                .fill(palette.widget_bg)
-                                .stroke(Stroke::new(1.0_f32, palette.border)),
+                            .add_sized(
+                                [88.0, 32.0],
+                                Button::new(
+                                    RichText::new("Cancel").color(palette.cancel_text).strong(),
+                                )
+                                .fill(palette.cancel_fill)
+                                .stroke(Stroke::new(1.0_f32, palette.cancel_text)),
                             )
                             .clicked()
                         {
@@ -975,6 +970,10 @@ impl ToolboxApp {
                         }
                     });
                 });
+            if !open {
+                zeroize_string(&mut self.password);
+                self.show_password_modal = false;
+            }
         }
     }
 }

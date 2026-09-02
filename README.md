@@ -23,7 +23,19 @@ A fast Rust desktop app for installing/removing apps and running Linux admin tas
 ## 🚀 Quick Start
 
 ```bash
-git clone https://github.com/TheLinuxITGuy/Toolbox.git && cd Toolbox && chmod +x linux-it-guy-toolbox && ./linux-it-guy-toolbox
+git clone https://github.com/TheLinuxITGuy/Toolbox.git
+cd Toolbox
+cargo build --release
+./target/release/linux-it-guy-toolbox
+```
+
+Prebuilt binaries are published on the [GitHub Releases](https://github.com/TheLinuxITGuy/Toolbox/releases) page.
+
+If your distribution's `rustc`/`cargo` is older than 1.92:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+. "$HOME/.cargo/env"
 ```
 
 ## 📖 Usage
@@ -36,7 +48,7 @@ git clone https://github.com/TheLinuxITGuy/Toolbox.git && cd Toolbox && chmod +x
 
 ## 🔧 Requirements
 
-**If the Quick Start script runs into any issues, your distribution might be missing a few foundational packages.**
+**If `cargo build --release` fails, your distribution might be missing git or GUI build packages (xcb, xkbcommon, OpenSSL, and similar).**
 
 ### Arch
 ```bash

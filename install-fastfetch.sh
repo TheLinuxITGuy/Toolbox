@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=toolbox-lib.sh
+source "${SCRIPT_DIR}/toolbox-lib.sh"
+
 printf '[0;32m=====================================\n'
 printf '[1;32mThe Linux IT Guy Toolbox\n'
 printf '[1;32mInstalling fastfetch\n'
 printf '[0;32m=====================================[0m\n'
+
+require_package_name "fastfetch"
 
 if command -v apt-get >/dev/null 2>&1; then
     if command -v nala >/dev/null 2>&1; then
@@ -13,13 +19,12 @@ if command -v apt-get >/dev/null 2>&1; then
         sudo nala install -f -y
     else
         sudo apt-get update
-        sudo apt-get install -y fastfetch
+        sudo apt-get install -y -- fastfetch
     fi
 elif command -v pacman >/dev/null 2>&1; then
-    sudo pacman -Syu --noconfirm
-    sudo pacman -S --noconfirm fastfetch
+    sudo pacman -S --needed --noconfirm -- fastfetch
 elif command -v dnf >/dev/null 2>&1; then
-    sudo dnf install -y fastfetch
+    sudo dnf install -y -- fastfetch
 else
     echo "Unsupported distribution."
     exit 1

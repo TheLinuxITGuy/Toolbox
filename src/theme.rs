@@ -5,8 +5,10 @@
 //! - Accent: `#E9FC12` neon yellow
 //! - Background: `#1A365D` navy
 //!
-//! Dark: navy canvas, pale-blue text and surfaces, yellow accents/CTAs.
-//! Light: pale-blue canvas, navy text and surfaces, yellow accents/CTAs.
+//! Dark: navy canvas (`#1A365D`). Category bars and app tiles use the same
+//! navy fill — no separate card color. Pale-blue text, yellow accents/CTAs.
+//! Light: pale-blue canvas (`#CDEDFE`). Category bars and app tiles use the
+//! same pale fill. Navy text, yellow accents/CTAs.
 //!
 //! Yellow is never used as body text on pale-blue fills (poor contrast). CTA
 //! labels are navy on yellow. On pale-blue fills, yellow is borders and icons
@@ -20,6 +22,11 @@ use eframe::egui::{Color32, Context, Stroke, Vec2, Visuals};
 pub const PALE_SKY: Color32 = Color32::from_rgb(0xCD, 0xED, 0xFE);
 pub const ACCENT: Color32 = Color32::from_rgb(0xE9, 0xFC, 0x12);
 pub const NAVY: Color32 = Color32::from_rgb(0x1A, 0x36, 0x5D);
+
+/// Chris's sun PNG. Shown in dark mode; click switches to light.
+pub const SUN_DARK_MODE_PNG: &[u8] = include_bytes!("../assets/theme/sun-dark-mode.png");
+/// Chris's moon PNG. Shown in light mode; click switches to dark.
+pub const MOON_LIGHT_MODE_PNG: &[u8] = include_bytes!("../assets/theme/moon-light-mode.png");
 
 const CONFIG_DIR_NAME: &str = "linux-it-guy-toolbox";
 const THEME_FILE_NAME: &str = "theme";
@@ -92,9 +99,9 @@ pub struct Palette {
     pub sidebar: Color32,
     pub chrome_text: Color32,
     pub chrome_subtle: Color32,
+    pub tile: Color32,
     pub surface: Color32,
     pub surface_hover: Color32,
-    pub surface_selected: Color32,
     pub on_surface: Color32,
     pub on_surface_subtle: Color32,
     pub toolbar: Color32,
@@ -137,7 +144,6 @@ pub struct Palette {
     pub modal_text: Color32,
     pub cancel_fill: Color32,
     pub cancel_text: Color32,
-    pub theme_icon: Color32,
 }
 
 impl Palette {
@@ -145,7 +151,6 @@ impl Palette {
         // Navy chrome, pale-blue surfaces and text, yellow CTAs.
         let surface = mix(PALE_SKY, NAVY, 0.10);
         let surface_hover = mix(PALE_SKY, NAVY, 0.16);
-        let surface_selected = mix(PALE_SKY, NAVY, 0.20);
         let sidebar = mix(NAVY, Color32::BLACK, 0.14);
         let chrome_subtle = mix(PALE_SKY, NAVY, 0.28);
 
@@ -155,12 +160,12 @@ impl Palette {
             sidebar,
             chrome_text: PALE_SKY,
             chrome_subtle,
+            tile: NAVY,
             surface,
             surface_hover,
-            surface_selected,
             on_surface: NAVY,
             on_surface_subtle: mix(NAVY, PALE_SKY, 0.28),
-            toolbar: surface,
+            toolbar: NAVY,
             summary: surface,
             log_frame: surface,
             log_inner: mix(NAVY, Color32::BLACK, 0.28),
@@ -185,22 +190,21 @@ impl Palette {
             chip_selected_text: NAVY,
             filter_selected_fill: ACCENT,
             filter_selected_text: NAVY,
-            filter_idle_text: NAVY,
-            count_badge: mix(NAVY, PALE_SKY, 0.18),
+            filter_idle_text: PALE_SKY,
+            count_badge: NAVY,
             count_badge_text: PALE_SKY,
             page_icon_fill: mix(NAVY, PALE_SKY, 0.20),
-            icon_well: mix(PALE_SKY, NAVY, 0.08),
-            badge_native_fill: mix(PALE_SKY, NAVY, 0.08),
+            icon_well: NAVY,
+            badge_native_fill: NAVY,
             badge_native_stroke: ACCENT,
-            badge_native_text: NAVY,
-            badge_flatpak_fill: mix(PALE_SKY, NAVY, 0.14),
-            badge_flatpak_stroke: mix(NAVY, PALE_SKY, 0.20),
-            badge_flatpak_text: NAVY,
+            badge_native_text: PALE_SKY,
+            badge_flatpak_fill: NAVY,
+            badge_flatpak_stroke: mix(PALE_SKY, NAVY, 0.20),
+            badge_flatpak_text: PALE_SKY,
             modal_fill: mix(PALE_SKY, NAVY, 0.06),
             modal_text: NAVY,
             cancel_fill: mix(PALE_SKY, Color32::WHITE, 0.35),
             cancel_text: NAVY,
-            theme_icon: ACCENT,
         }
     }
 
@@ -208,7 +212,6 @@ impl Palette {
         // Pale-blue chrome, navy surfaces and text, yellow CTAs.
         let surface = mix(NAVY, PALE_SKY, 0.08);
         let surface_hover = mix(NAVY, PALE_SKY, 0.16);
-        let surface_selected = mix(NAVY, PALE_SKY, 0.20);
         let sidebar = mix(PALE_SKY, Color32::WHITE, 0.16);
         let chrome_subtle = mix(NAVY, PALE_SKY, 0.32);
 
@@ -218,12 +221,12 @@ impl Palette {
             sidebar,
             chrome_text: NAVY,
             chrome_subtle,
+            tile: PALE_SKY,
             surface,
             surface_hover,
-            surface_selected,
             on_surface: PALE_SKY,
             on_surface_subtle: mix(PALE_SKY, NAVY, 0.22),
-            toolbar: surface,
+            toolbar: PALE_SKY,
             summary: surface,
             log_frame: surface,
             log_inner: mix(NAVY, Color32::BLACK, 0.18),
@@ -248,22 +251,21 @@ impl Palette {
             chip_selected_text: PALE_SKY,
             filter_selected_fill: ACCENT,
             filter_selected_text: NAVY,
-            filter_idle_text: PALE_SKY,
-            count_badge: mix(PALE_SKY, NAVY, 0.14),
+            filter_idle_text: NAVY,
+            count_badge: PALE_SKY,
             count_badge_text: NAVY,
             page_icon_fill: mix(NAVY, PALE_SKY, 0.12),
-            icon_well: mix(NAVY, PALE_SKY, 0.10),
-            badge_native_fill: mix(NAVY, PALE_SKY, 0.10),
+            icon_well: PALE_SKY,
+            badge_native_fill: PALE_SKY,
             badge_native_stroke: ACCENT,
-            badge_native_text: PALE_SKY,
-            badge_flatpak_fill: mix(NAVY, PALE_SKY, 0.16),
-            badge_flatpak_stroke: mix(PALE_SKY, NAVY, 0.20),
-            badge_flatpak_text: PALE_SKY,
+            badge_native_text: NAVY,
+            badge_flatpak_fill: PALE_SKY,
+            badge_flatpak_stroke: mix(NAVY, PALE_SKY, 0.25),
+            badge_flatpak_text: NAVY,
             modal_fill: mix(PALE_SKY, Color32::WHITE, 0.35),
             modal_text: NAVY,
             cancel_fill: mix(PALE_SKY, Color32::WHITE, 0.55),
             cancel_text: NAVY,
-            theme_icon: NAVY,
         }
     }
 }
@@ -440,8 +442,10 @@ mod tests {
         assert_eq!(palette.cta_text, NAVY);
         assert_eq!(palette.filter_selected_fill, ACCENT);
         assert_eq!(palette.filter_selected_text, NAVY);
-        assert_ne!(palette.surface, NAVY);
-        assert!(contrast_ratio(palette.surface, NAVY) > 2.0);
+        assert_eq!(palette.tile, NAVY);
+        assert_eq!(palette.tile, palette.background);
+        assert_eq!(palette.toolbar, NAVY);
+        assert_eq!(palette.count_badge, NAVY);
     }
 
     #[test]
@@ -455,8 +459,10 @@ mod tests {
         assert_eq!(palette.cta_text, NAVY);
         assert_eq!(palette.filter_selected_fill, ACCENT);
         assert_eq!(palette.filter_selected_text, NAVY);
-        assert_ne!(palette.surface, PALE_SKY);
-        assert!(contrast_ratio(palette.surface, PALE_SKY) > 2.0);
+        assert_eq!(palette.tile, PALE_SKY);
+        assert_eq!(palette.tile, palette.background);
+        assert_eq!(palette.toolbar, PALE_SKY);
+        assert_eq!(palette.count_badge, PALE_SKY);
     }
 
     #[test]
@@ -465,6 +471,11 @@ mod tests {
             assert!(
                 contrast_ratio(palette.chrome_text, palette.background) >= 4.5,
                 "{:?} chrome text contrast",
+                palette.mode
+            );
+            assert!(
+                contrast_ratio(palette.chrome_text, palette.tile) >= 4.5,
+                "{:?} tile text contrast",
                 palette.mode
             );
             assert!(
@@ -524,6 +535,27 @@ mod tests {
         assert_eq!(ThemeMode::parse("nope"), None);
         assert_eq!(ThemeMode::Dark.toggle_icon(), ThemeIcon::Sun);
         assert_eq!(ThemeMode::Light.toggle_icon(), ThemeIcon::Moon);
+    }
+
+    #[test]
+    fn chris_theme_icons_are_embedded_pngs() {
+        assert_eq!(&SUN_DARK_MODE_PNG[..8], b"\x89PNG\r\n\x1a\n");
+        assert_eq!(&MOON_LIGHT_MODE_PNG[..8], b"\x89PNG\r\n\x1a\n");
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        assert_eq!(
+            SUN_DARK_MODE_PNG,
+            std::fs::read(root.join("assets/theme/sun-dark-mode.png"))
+                .unwrap()
+                .as_slice()
+        );
+        assert_eq!(
+            MOON_LIGHT_MODE_PNG,
+            std::fs::read(root.join("assets/theme/moon-light-mode.png"))
+                .unwrap()
+                .as_slice()
+        );
+        assert!(crate::logos::decode_png(SUN_DARK_MODE_PNG).is_some());
+        assert!(crate::logos::decode_png(MOON_LIGHT_MODE_PNG).is_some());
     }
 
     #[test]

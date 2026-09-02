@@ -82,6 +82,7 @@ struct ToolboxApp {
     log_revision: u64,
     icons: HashMap<&'static str, TextureHandle>,
     distro_icons: HashMap<&'static str, TextureHandle>,
+    theme_icons: HashMap<&'static str, TextureHandle>,
     theme: ThemeMode,
 }
 
@@ -92,6 +93,7 @@ impl ToolboxApp {
         theme::apply_theme(&cc.egui_ctx, theme);
         let icons = load_icons(&cc.egui_ctx);
         let distro_icons = load_distro_icons(&cc.egui_ctx);
+        let theme_icons = load_theme_icons(&cc.egui_ctx);
 
         let discovery = find_base_dir();
         let catalog = if discovery.found {
@@ -140,6 +142,7 @@ impl ToolboxApp {
             log_revision: 0,
             icons,
             distro_icons,
+            theme_icons,
             theme,
         }
     }
@@ -368,7 +371,8 @@ impl ToolboxApp {
                 self.log_revision = self.log_revision.saturating_add(1);
             }
             ui.add_space(4.0);
-            if theme_toggle_button(ui, &palette).clicked() {
+            let theme_icon = theme_icon_texture(self, palette.mode).cloned();
+            if theme_toggle_button(ui, &palette, theme_icon.as_ref()).clicked() {
                 let ctx = ui.ctx().clone();
                 self.toggle_theme(&ctx);
             }
@@ -518,12 +522,12 @@ impl ToolboxApp {
                 );
 
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if flat_text_button(ui, "Clear", palette.on_surface_subtle, 60.0, &palette)
+                    if flat_text_button(ui, "Clear", palette.chrome_subtle, 60.0, &palette)
                         .clicked()
                     {
                         self.select_visible_apps(false);
                     }
-                    if flat_text_button(ui, "Select All", palette.on_surface, 92.0, &palette)
+                    if flat_text_button(ui, "Select All", palette.chrome_text, 92.0, &palette)
                         .clicked()
                     {
                         self.select_visible_apps(true);
@@ -591,7 +595,7 @@ impl ToolboxApp {
             Align2::LEFT_CENTER,
             label_text,
             FontId::proportional(14.0),
-            palette.on_surface,
+            palette.chrome_text,
         );
 
         let badge_center_x = rect.min.x + width * 0.42;
@@ -612,7 +616,7 @@ impl ToolboxApp {
                 notes.as_str()
             },
             FontId::proportional(11.5),
-            palette.on_surface_subtle,
+            palette.chrome_subtle,
         );
 
         if response.clicked() {
@@ -691,7 +695,7 @@ impl ToolboxApp {
                     .add_sized(
                         [68.0, 32.0],
                         Button::new(RichText::new("Clear").color(palette.chrome_subtle))
-                            .fill(palette.surface)
+                            .fill(palette.tile)
                             .stroke(Stroke::new(1.0_f32, palette.border)),
                     )
                     .clicked()
@@ -702,7 +706,7 @@ impl ToolboxApp {
                     .add_sized(
                         [92.0, 32.0],
                         Button::new(RichText::new("Select All").color(palette.chrome_text))
-                            .fill(palette.surface)
+                            .fill(palette.tile)
                             .stroke(Stroke::new(1.0_f32, palette.border)),
                     )
                     .clicked()
@@ -736,7 +740,7 @@ impl ToolboxApp {
             Align2::LEFT_CENTER,
             elide(&label, 24),
             FontId::proportional(14.0),
-            palette.on_surface,
+            palette.chrome_text,
         );
 
         ui.painter().text(
@@ -744,7 +748,7 @@ impl ToolboxApp {
             Align2::LEFT_CENTER,
             admin_description(&label, &script),
             FontId::proportional(11.5),
-            palette.on_surface_subtle,
+            palette.chrome_subtle,
         );
 
         if response.clicked() {
@@ -1084,6 +1088,29 @@ fn load_distro_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
     icons
 }
 
+fn load_theme_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
+    let mut icons = HashMap::new();
+    for (key, bytes) in [
+        ("sun", theme::SUN_DARK_MODE_PNG),
+        ("moon", theme::MOON_LIGHT_MODE_PNG),
+    ] {
+        if let Some(color_image) = crate::logos::decode_png(bytes) {
+            icons.insert(
+                key,
+                ctx.load_texture(format!("theme-{key}"), color_image, TextureOptions::LINEAR),
+            );
+        }
+    }
+    icons
+}
+
+fn theme_icon_texture(app: &ToolboxApp, mode: ThemeMode) -> Option<&TextureHandle> {
+    match mode.toggle_icon() {
+        ThemeIcon::Sun => app.theme_icons.get("sun"),
+        ThemeIcon::Moon => app.theme_icons.get("moon"),
+    }
+}
+
 fn nav_button(ui: &mut Ui, page: Page, selected: bool, palette: &Palette) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 44.0), Sense::click());
     let fill = if selected {
@@ -1142,36 +1169,26 @@ fn nav_aux_button(ui: &mut Ui, label: &str, symbol: &str, palette: &Palette) -> 
     response
 }
 
-fn theme_toggle_button(ui: &mut Ui, palette: &Palette) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(40.0, 40.0), Sense::click());
+fn theme_toggle_button(
+    ui: &mut Ui,
+    palette: &Palette,
+    icon: Option<&TextureHandle>,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(44.0, 40.0), Sense::click());
     let response = response.on_hover_text(palette.mode.toggle_tooltip());
     if response.hovered() {
         ui.painter().rect_filled(rect, 7.0, palette.nav_hover);
     }
-    let icon = Rect::from_center_size(rect.center(), vec2(22.0, 22.0));
-    match palette.mode.toggle_icon() {
-        ThemeIcon::Sun => paint_sun(ui.painter(), icon, palette.theme_icon),
-        ThemeIcon::Moon => paint_moon(ui.painter(), icon, palette.theme_icon, palette.sidebar),
+    let icon_rect = Rect::from_center_size(rect.center(), vec2(32.0, 28.0));
+    if let Some(icon) = icon {
+        ui.painter().image(
+            icon.id(),
+            icon_rect,
+            Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
+            Color32::WHITE,
+        );
     }
     response
-}
-
-fn paint_sun(painter: &Painter, rect: Rect, color: Color32) {
-    let center = rect.center();
-    let radius = 5.0;
-    painter.circle_stroke(center, radius, Stroke::new(1.6_f32, color));
-    for index in 0..8 {
-        let angle = std::f32::consts::TAU * (index as f32) / 8.0;
-        let inner = center + vec2(angle.cos(), angle.sin()) * (radius + 2.0);
-        let outer = center + vec2(angle.cos(), angle.sin()) * (radius + 6.0);
-        painter.line_segment([inner, outer], Stroke::new(1.5_f32, color));
-    }
-}
-
-fn paint_moon(painter: &Painter, rect: Rect, color: Color32, cutout: Color32) {
-    let center = rect.center();
-    painter.circle_filled(center, 7.0, color);
-    painter.circle_filled(center + vec2(3.2, -1.8), 5.6, cutout);
 }
 
 fn chip(ui: &mut Ui, label: &str, selected: bool, icon: Option<&TextureHandle>, palette: &Palette) {
@@ -1222,7 +1239,7 @@ fn filter_chip(ui: &mut Ui, label: &str, selected: bool, palette: &Palette) -> e
     let fill = if selected {
         palette.filter_selected_fill
     } else if response.hovered() {
-        palette.surface_hover
+        palette.nav_hover
     } else {
         Color32::TRANSPARENT
     };
@@ -1250,7 +1267,7 @@ fn flat_text_button(
 ) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(vec2(width, 32.0), Sense::click());
     if response.hovered() {
-        ui.painter().rect_filled(rect, 5.0, palette.surface_hover);
+        ui.painter().rect_filled(rect, 5.0, palette.nav_hover);
     }
     ui.painter().text(
         rect.center(),
@@ -1307,6 +1324,12 @@ fn paint_search_icon(painter: &Painter, rect: Rect, palette: &Palette) {
 fn count_badge(ui: &mut Ui, count: usize, palette: &Palette) {
     let (rect, _) = ui.allocate_exact_size(vec2(28.0, 20.0), Sense::hover());
     ui.painter().rect_filled(rect, 10.0, palette.count_badge);
+    ui.painter().rect_stroke(
+        rect,
+        10.0,
+        Stroke::new(1.0_f32, palette.border),
+        StrokeKind::Inside,
+    );
     ui.painter().text(
         rect.center(),
         Align2::CENTER_CENTER,
@@ -1361,18 +1384,11 @@ fn panel_frame(palette: &Palette) -> Frame {
 fn paint_row_background(
     painter: &Painter,
     rect: Rect,
-    hovered: bool,
+    _hovered: bool,
     selected: bool,
     palette: &Palette,
 ) {
-    let fill = if selected {
-        palette.surface_selected
-    } else if hovered {
-        palette.surface_hover
-    } else {
-        palette.surface
-    };
-    painter.rect_filled(rect, 4.0, fill);
+    painter.rect_filled(rect, 4.0, palette.tile);
     painter.rect_stroke(
         rect,
         4.0,

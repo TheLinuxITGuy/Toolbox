@@ -161,7 +161,18 @@ native_installed() {
 flatpak_installed() {
     local app_id=$1
     require_flatpak_id "$app_id"
-    flatpak info "$app_id" >/dev/null 2>&1
+    if ! command_exists flatpak; then
+        return 1
+    fi
+    command flatpak info "$app_id" >/dev/null 2>&1
+}
+
+run_flatpak() {
+    if ! command_exists flatpak; then
+        echo "The flatpak command is not installed. Install the flatpak package and retry." >&2
+        return 127
+    fi
+    command flatpak "$@"
 }
 
 ensure_flatpak() {
@@ -170,22 +181,35 @@ ensure_flatpak() {
     fi
 
     echo "Flatpak is not installed. Installing now..."
+    # sudo -n fails immediately instead of waiting on a password prompt when
+    # this script is launched from the GUI (stdin is not a terminal).
     case "$PACKAGE_MANAGER" in
         apt)
-            apt_update
-            apt_install flatpak
+            if [[ "$APT_TOOL" == "nala" ]]; then
+                sudo -n nala update
+                sudo -n nala install -y flatpak
+            else
+                sudo -n apt-get update
+                sudo -n apt-get install -y -- flatpak
+            fi
             ;;
         pacman)
-            sudo pacman -S --needed --noconfirm -- flatpak
+            sudo -n pacman -S --needed --noconfirm -- flatpak
             ;;
         dnf)
-            sudo dnf install -y -- flatpak
+            sudo -n dnf install -y -- flatpak
             ;;
         *)
             echo "Unsupported package manager." >&2
             exit 1
             ;;
     esac
+
+    hash -r 2>/dev/null || true
+    if ! command_exists flatpak; then
+        echo "The flatpak command is still missing after package install." >&2
+        exit 1
+    fi
 }
 
 install_native() {
@@ -247,8 +271,8 @@ install_flatpak_app() {
         return 0
     fi
 
-    flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-    flatpak install --user -y -- flathub "$app_id"
+    run_flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+    run_flatpak install --user -y -- flathub "$app_id"
 }
 
 remove_flatpak_app() {
@@ -261,7 +285,7 @@ remove_flatpak_app() {
         return 0
     fi
 
-    flatpak uninstall -y -- "$app_id"
+    run_flatpak uninstall -y -- "$app_id"
 }
 
 print_header "${ACTION^} ${APP_LABEL}"

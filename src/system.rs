@@ -1,7 +1,7 @@
 //! Local system inspection helpers. These never take user-controlled command
 //! strings and never invoke a shell.
 
-use std::{env, fs, path::Path, process::Command};
+use std::{env, ffi::OsStr, fs, path::Path, process::Command};
 
 pub fn distro_name() -> String {
     let Ok(contents) = fs::read_to_string("/etc/os-release") else {
@@ -34,18 +34,23 @@ pub fn detect_package_manager() -> String {
 }
 
 pub fn command_exists(name: &str) -> bool {
+    match env::var_os("PATH") {
+        Some(path) => command_exists_on_path(name, &path),
+        None => {
+            !name.is_empty()
+                && !name.contains('/')
+                && !name.contains('\0')
+                && Path::new(name).is_file()
+        }
+    }
+}
+
+pub fn command_exists_on_path(name: &str, path_value: impl AsRef<OsStr>) -> bool {
     if name.is_empty() || name.contains('/') || name.contains('\0') {
         return false;
     }
 
-    let Some(paths) = env::var_os("PATH") else {
-        return Path::new(name).is_file();
-    };
-
-    env::split_paths(&paths).any(|dir| {
-        let candidate = dir.join(name);
-        candidate.is_file()
-    })
+    env::split_paths(path_value.as_ref()).any(|dir| dir.join(name).is_file())
 }
 
 pub fn command_output(program: &str, args: &[&str]) -> String {
@@ -131,6 +136,15 @@ mod tests {
     #[test]
     fn command_exists_finds_sh() {
         assert!(command_exists("sh"));
+    }
+
+    #[test]
+    fn command_exists_is_false_for_flatpak_on_empty_path() {
+        assert!(!command_exists_on_path(
+            "flatpak",
+            "/var/empty-toolbox-no-bin"
+        ));
+        assert!(!command_exists_on_path("flatpak", ""));
     }
 
     #[test]

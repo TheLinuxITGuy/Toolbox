@@ -17,7 +17,7 @@ use eframe::egui::{
     Vec2, pos2, vec2,
 };
 
-use catalog::{AdminTask, AppEntry, Task, admin_tasks, find_base_dir, load_apps};
+use catalog::{AdminTask, AppEntry, CatalogLoad, Task, admin_tasks, find_base_dir, load_apps};
 use runner::{RunnerMessage, run_tasks};
 use system::{
     command_output, detect_package_manager, distro_name, env_or_unknown, strip_ansi, uptime,
@@ -89,8 +89,16 @@ impl ToolboxApp {
         let icons = load_icons(&cc.egui_ctx);
         let distro_icons = load_distro_icons(&cc.egui_ctx);
 
-        let base_dir = find_base_dir();
-        let catalog = load_apps(&base_dir);
+        let discovery = find_base_dir();
+        let catalog = if discovery.found {
+            load_apps(&discovery.base_dir)
+        } else {
+            CatalogLoad {
+                error: Some(discovery.not_found_message()),
+                ..CatalogLoad::default()
+            }
+        };
+        let base_dir = discovery.base_dir;
         let distro_name = distro_name();
         let package_manager = detect_package_manager();
 

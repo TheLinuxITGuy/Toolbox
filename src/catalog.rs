@@ -3,6 +3,7 @@
 //! CSV rows and admin helper names are validated before they are turned into
 //! argv arrays. Commands are never built as a single shell string.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -161,7 +162,7 @@ pub fn load_apps(base_dir: &Path) -> CatalogLoad {
     if !path.is_file() {
         return CatalogLoad {
             error: Some(format!(
-                "App catalog not found at {}. Add apps_config.csv next to the helper scripts.",
+                "App catalog not found at {}. Expected apps_config.csv beside the helper scripts (main.sh).",
                 path.display()
             )),
             ..CatalogLoad::default()
@@ -248,25 +249,133 @@ pub fn display_command(command: &[String]) -> String {
         .join(" ")
 }
 
-pub fn find_base_dir() -> PathBuf {
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(dir) = exe.parent()
-        && catalog_present(dir)
-    {
-        return dir.to_path_buf();
+const CATALOG_FILE: &str = "apps_config.csv";
+const HELPER_MARKER: &str = "main.sh";
+
+/// Result of locating the directory that holds the catalog and helper scripts.
+#[derive(Clone, Debug, Default)]
+pub struct BaseDirDiscovery {
+    pub base_dir: PathBuf,
+    pub looked: Vec<PathBuf>,
+    pub found: bool,
+}
+
+impl BaseDirDiscovery {
+    pub fn not_found_message(&self) -> String {
+        if self.looked.is_empty() {
+            return "App catalog not found. Looked for apps_config.csv beside the helper scripts next to the executable, in parent folders, and in the current working directory.".to_owned();
+        }
+
+        let places = self
+            .looked
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "App catalog not found. Looked for apps_config.csv beside the helper scripts in: {places}"
+        )
+    }
+}
+
+pub fn find_base_dir() -> BaseDirDiscovery {
+    discover_base_dir(
+        std::env::current_exe().ok().as_deref(),
+        std::env::current_dir().ok().as_deref(),
+    )
+}
+
+/// Lookup order: directory of the executable, walk-up toward a repo root that
+/// contains the catalog and helper scripts, the folder beside those helpers,
+/// then the current working directory.
+pub fn discover_base_dir(exe: Option<&Path>, cwd: Option<&Path>) -> BaseDirDiscovery {
+    let mut discovery = BaseDirDiscovery {
+        base_dir: PathBuf::from("."),
+        looked: Vec::new(),
+        found: false,
+    };
+    let mut seen = HashSet::new();
+
+    let mut consider = |dir: &Path| -> bool {
+        let key = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+        if !seen.insert(key) {
+            return false;
+        }
+        discovery.looked.push(dir.to_path_buf());
+        if catalog_present(dir) {
+            discovery.base_dir = dir.to_path_buf();
+            discovery.found = true;
+            return true;
+        }
+        false
+    };
+
+    if let Some(exe) = exe {
+        // 1. Next to the executable (e.g. a release layout that ships the CSV).
+        if let Some(exe_dir) = exe.parent() {
+            if consider(exe_dir) {
+                return discovery;
+            }
+
+            // 2. Walk up from the binary toward a checkout root.
+            for ancestor in exe_dir.ancestors().skip(1) {
+                if consider(ancestor) {
+                    return discovery;
+                }
+                if ancestor.parent().is_none() {
+                    break;
+                }
+            }
+        }
     }
 
-    if let Ok(cwd) = std::env::current_dir()
-        && catalog_present(&cwd)
-    {
-        return cwd;
+    // 3. Directory that already contains helper scripts (main.sh), if the
+    // catalog sits beside them but was not on the exe walk.
+    for candidate in helper_script_dirs(exe, cwd) {
+        if consider(&candidate) {
+            return discovery;
+        }
     }
 
-    PathBuf::from(".")
+    // 4. Current working directory.
+    if let Some(cwd) = cwd
+        && consider(cwd)
+    {
+        return discovery;
+    }
+
+    discovery
+}
+
+fn helper_script_dirs(exe: Option<&Path>, cwd: Option<&Path>) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let mut push_if_helpers = |dir: &Path| {
+        if dir.join(HELPER_MARKER).is_file() {
+            dirs.push(dir.to_path_buf());
+        }
+    };
+
+    if let Some(exe) = exe
+        && let Some(exe_dir) = exe.parent()
+    {
+        push_if_helpers(exe_dir);
+        for ancestor in exe_dir.ancestors().skip(1) {
+            push_if_helpers(ancestor);
+            if ancestor.parent().is_none() {
+                break;
+            }
+        }
+    }
+
+    if let Some(cwd) = cwd {
+        push_if_helpers(cwd);
+    }
+
+    dirs
 }
 
 fn catalog_present(dir: &Path) -> bool {
-    dir.join("apps_config.csv").is_file() && dir.join("main.sh").is_file()
+    dir.join(CATALOG_FILE).is_file() && dir.join(HELPER_MARKER).is_file()
 }
 
 #[cfg(test)]
@@ -446,5 +555,121 @@ mod tests {
             load.warnings
         );
         assert!(!load.apps.is_empty());
+    }
+
+    fn empty_dir(label: &str) -> PathBuf {
+        let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "linux-it-guy-toolbox-lookup-{}-{}-{}",
+            std::process::id(),
+            seq,
+            label
+        ));
+        fs::create_dir_all(&path).expect("create empty lookup dir");
+        path
+    }
+
+    fn write_catalog_files(dir: &Path) {
+        fs::write(
+            dir.join("apps_config.csv"),
+            "Category,Label,Package Name,Flatpak ID,Exec Name,Notes\nBrowsers,Firefox,firefox,,firefox,\n",
+        )
+        .unwrap();
+        fs::write(dir.join("main.sh"), "#!/bin/bash\n").unwrap();
+    }
+
+    #[test]
+    fn discover_prefers_directory_beside_the_executable() {
+        let toolbox = temp_toolbox();
+        let exe = toolbox.path.join("linux-it-guy-toolbox");
+        fs::write(&exe, []).unwrap();
+        let cwd = empty_dir("cwd-ignored");
+        write_catalog_files(&cwd);
+
+        let discovery = discover_base_dir(Some(&exe), Some(&cwd));
+        assert!(discovery.found);
+        assert_eq!(
+            discovery.base_dir.canonicalize().unwrap(),
+            toolbox.path.canonicalize().unwrap()
+        );
+        let _ = fs::remove_dir_all(cwd);
+    }
+
+    #[test]
+    fn discover_walks_up_from_target_release_to_repo_root() {
+        let toolbox = temp_toolbox();
+        let release_dir = toolbox.path.join("target").join("release");
+        fs::create_dir_all(&release_dir).unwrap();
+        let exe = release_dir.join("linux-it-guy-toolbox");
+        fs::write(&exe, []).unwrap();
+        let cwd = empty_dir("other-cwd");
+
+        let discovery = discover_base_dir(Some(&exe), Some(&cwd));
+        assert!(discovery.found);
+        assert_eq!(
+            discovery.base_dir.canonicalize().unwrap(),
+            toolbox.path.canonicalize().unwrap()
+        );
+        assert!(discovery.looked.iter().any(|path| path == &release_dir));
+        assert!(discovery.looked.iter().any(|path| path == &toolbox.path));
+        let _ = fs::remove_dir_all(cwd);
+    }
+
+    #[test]
+    fn discover_uses_directory_beside_helper_scripts() {
+        let root = empty_dir("helpers-root");
+        write_catalog_files(&root);
+        let nested = root.join("nested").join("bin");
+        fs::create_dir_all(&nested).unwrap();
+        let exe = nested.join("toolbox");
+        fs::write(&exe, []).unwrap();
+        let cwd = empty_dir("helpers-cwd");
+
+        let discovery = discover_base_dir(Some(&exe), Some(&cwd));
+        assert!(discovery.found);
+        assert_eq!(
+            discovery.base_dir.canonicalize().unwrap(),
+            root.canonicalize().unwrap()
+        );
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(cwd);
+    }
+
+    #[test]
+    fn discover_falls_back_to_current_working_directory() {
+        let cwd = empty_dir("cwd-catalog");
+        write_catalog_files(&cwd);
+        let exe_dir = empty_dir("exe-without-catalog");
+        let exe = exe_dir.join("linux-it-guy-toolbox");
+        fs::write(&exe, []).unwrap();
+
+        let discovery = discover_base_dir(Some(&exe), Some(&cwd));
+        assert!(discovery.found);
+        assert_eq!(
+            discovery.base_dir.canonicalize().unwrap(),
+            cwd.canonicalize().unwrap()
+        );
+        let _ = fs::remove_dir_all(cwd);
+        let _ = fs::remove_dir_all(exe_dir);
+    }
+
+    #[test]
+    fn discover_reports_every_place_it_looked_when_missing() {
+        let exe_dir = empty_dir("missing-exe");
+        let nested = exe_dir.join("target").join("release");
+        fs::create_dir_all(&nested).unwrap();
+        let exe = nested.join("linux-it-guy-toolbox");
+        fs::write(&exe, []).unwrap();
+        let cwd = empty_dir("missing-cwd");
+
+        let discovery = discover_base_dir(Some(&exe), Some(&cwd));
+        assert!(!discovery.found);
+        assert!(discovery.looked.iter().any(|path| path == &nested));
+        assert!(discovery.looked.iter().any(|path| path == &cwd));
+        let message = discovery.not_found_message();
+        assert!(message.contains("Looked for apps_config.csv beside the helper scripts"));
+        assert!(!message.contains("./apps_config.csv"));
+        let _ = fs::remove_dir_all(exe_dir);
+        let _ = fs::remove_dir_all(cwd);
     }
 }

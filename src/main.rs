@@ -950,18 +950,27 @@ fn install_fonts(ctx: &Context) {
     ctx.set_fonts(fonts);
 }
 
-// App tile logos are SVG markup compiled in via logos.rs. Missing the
+// App tiles: Chris's PNGs plus the Origin SVG, all compiled in. Missing the
 // checkout's assets folder at runtime does not affect these textures.
 fn load_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
     let mut icons = HashMap::new();
-    for &(key, svg) in crate::logos::APP_SVGS {
-        if let Some(raster) = crate::logos::rasterize_svg_markup(svg, 64) {
-            let color_image = crate::logos::color_image_from_raster(&raster);
+    for &(key, bytes) in crate::logos::APP_PNGS {
+        if let Some(color_image) = crate::logos::decode_png(bytes) {
             icons.insert(
                 key,
                 ctx.load_texture(format!("app-{key}"), color_image, TextureOptions::LINEAR),
             );
         }
+    }
+    if let Some(raster) = crate::logos::rasterize_svg_markup(crate::logos::BRAVE_ORIGIN_SVG, 64) {
+        icons.insert(
+            "brave-origin",
+            ctx.load_texture(
+                "app-brave-origin",
+                crate::logos::color_image_from_raster(&raster),
+                TextureOptions::LINEAR,
+            ),
+        );
     }
     icons
 }
@@ -1267,15 +1276,11 @@ fn paint_checkbox(painter: &Painter, rect: Rect, selected: bool) {
 
 fn paint_app_icon(painter: &Painter, rect: Rect, label: &str, icon: Option<&TextureHandle>) {
     if let Some(icon) = icon {
-        // Origin's official mark is a black outlined lion. Seat it on a light
-        // disc so it stays readable on Toolbox's dark tiles without reusing
-        // the orange Brave Browser logo.
-        let background = if label == "Brave Origin" {
-            Color32::from_rgb(242, 244, 246)
-        } else {
-            Color32::from_rgb(24, 29, 34)
-        };
-        painter.circle_filled(rect.center(), rect.width() / 2.0, background);
+        painter.circle_filled(
+            rect.center(),
+            rect.width() / 2.0,
+            Color32::from_rgb(24, 29, 34),
+        );
         painter.image(
             icon.id(),
             rect,
@@ -1847,12 +1852,9 @@ fn icon_key(label: &str) -> &'static str {
         "Firefox" | "firefox" => "firefox",
         "GIMP" | "gimp" => "gimp",
         "Google Chrome" | "google-chrome" => "google-chrome",
-        "htop" => "htop",
-        "LibreOffice" | "libreoffice" => "libreoffice",
         "LocalSend" | "localsend" => "localsend",
         "Lutris" | "lutris" => "lutris",
         "Microsoft Edge" | "microsoft-edge" => "microsoft-edge",
-        "mpv" => "mpv",
         "OBS Studio" | "obs" => "obs-studio",
         "OnlyOffice" | "onlyoffice-desktopeditors" => "onlyoffice",
         "Opera" | "opera" => "opera",

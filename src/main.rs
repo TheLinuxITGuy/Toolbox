@@ -1174,12 +1174,12 @@ fn theme_toggle_button(
     palette: &Palette,
     icon: Option<&TextureHandle>,
 ) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(44.0, 40.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(52.0, 48.0), Sense::click());
     let response = response.on_hover_text(palette.mode.toggle_tooltip());
     if response.hovered() {
-        ui.painter().rect_filled(rect, 7.0, palette.nav_hover);
+        ui.painter().rect_filled(rect, 8.0, palette.nav_hover);
     }
-    let icon_rect = Rect::from_center_size(rect.center(), vec2(32.0, 28.0));
+    let icon_rect = Rect::from_center_size(rect.center(), vec2(44.0, 40.0));
     if let Some(icon) = icon {
         ui.painter().image(
             icon.id(),

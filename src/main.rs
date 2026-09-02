@@ -23,7 +23,7 @@ use runner::{RunnerMessage, run_tasks};
 use system::{
     command_output, detect_package_manager, distro_name, env_or_unknown, strip_ansi, uptime,
 };
-use theme::{Palette, ThemeIcon, ThemeMode};
+use theme::{Palette, ThemeMode};
 use validate::zeroize_string;
 
 fn main() -> eframe::Result {
@@ -82,7 +82,6 @@ struct ToolboxApp {
     log_revision: u64,
     icons: HashMap<&'static str, TextureHandle>,
     distro_icons: HashMap<&'static str, TextureHandle>,
-    theme_icons: HashMap<&'static str, TextureHandle>,
     theme: ThemeMode,
 }
 
@@ -93,7 +92,6 @@ impl ToolboxApp {
         theme::apply_theme(&cc.egui_ctx, theme);
         let icons = load_icons(&cc.egui_ctx);
         let distro_icons = load_distro_icons(&cc.egui_ctx);
-        let theme_icons = load_theme_icons(&cc.egui_ctx);
 
         let discovery = find_base_dir();
         let catalog = if discovery.found {
@@ -142,7 +140,6 @@ impl ToolboxApp {
             log_revision: 0,
             icons,
             distro_icons,
-            theme_icons,
             theme,
         }
     }
@@ -371,8 +368,7 @@ impl ToolboxApp {
                 self.log_revision = self.log_revision.saturating_add(1);
             }
             ui.add_space(4.0);
-            let theme_icon = theme_icon_texture(self, palette.mode).cloned();
-            if theme_toggle_button(ui, &palette, theme_icon.as_ref()).clicked() {
+            if theme_toggle_button(ui, &palette).clicked() {
                 let ctx = ui.ctx().clone();
                 self.toggle_theme(&ctx);
             }
@@ -1088,29 +1084,6 @@ fn load_distro_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
     icons
 }
 
-fn load_theme_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
-    let mut icons = HashMap::new();
-    for (key, bytes) in [
-        ("sun", theme::SUN_DARK_MODE_PNG),
-        ("moon", theme::MOON_LIGHT_MODE_PNG),
-    ] {
-        if let Some(color_image) = crate::logos::decode_png(bytes) {
-            icons.insert(
-                key,
-                ctx.load_texture(format!("theme-{key}"), color_image, TextureOptions::LINEAR),
-            );
-        }
-    }
-    icons
-}
-
-fn theme_icon_texture(app: &ToolboxApp, mode: ThemeMode) -> Option<&TextureHandle> {
-    match mode.toggle_icon() {
-        ThemeIcon::Sun => app.theme_icons.get("sun"),
-        ThemeIcon::Moon => app.theme_icons.get("moon"),
-    }
-}
-
 fn nav_button(ui: &mut Ui, page: Page, selected: bool, palette: &Palette) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 44.0), Sense::click());
     let fill = if selected {
@@ -1169,48 +1142,27 @@ fn nav_aux_button(ui: &mut Ui, label: &str, symbol: &str, palette: &Palette) -> 
     response
 }
 
-fn theme_toggle_button(
-    ui: &mut Ui,
-    palette: &Palette,
-    icon: Option<&TextureHandle>,
-) -> egui::Response {
+fn theme_toggle_button(ui: &mut Ui, palette: &Palette) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(vec2(52.0, 48.0), Sense::click());
     let response = response.on_hover_text(palette.mode.toggle_tooltip());
     if response.hovered() {
         ui.painter().rect_filled(rect, 8.0, palette.nav_hover);
     }
-    let icon_rect = Rect::from_center_size(rect.center(), vec2(44.0, 40.0));
-    if let Some(icon) = icon {
-        ui.painter().image(
-            icon.id(),
-            icon_rect,
-            Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
-            Color32::WHITE,
-        );
-    }
+    let icon_rect = Rect::from_center_size(rect.center(), vec2(26.0, 26.0));
+    palette.paint_toggle_icon(ui.painter(), icon_rect);
     response
 }
 
 fn chip(ui: &mut Ui, label: &str, selected: bool, icon: Option<&TextureHandle>, palette: &Palette) {
     let (rect, _) = ui.allocate_exact_size(vec2(104.0, 34.0), Sense::hover());
-    let fill = if selected {
-        palette.chip_selected
-    } else {
-        palette.chip_idle
-    };
-    ui.painter().rect_filled(rect, 7.0, fill);
-    ui.painter().rect_stroke(
+    ui.painter().rect_filled(
         rect,
         7.0,
-        Stroke::new(
-            1.0_f32,
-            if selected {
-                palette.accent
-            } else {
-                palette.border
-            },
-        ),
-        StrokeKind::Inside,
+        if selected {
+            palette.chip_selected
+        } else {
+            palette.chip_idle
+        },
     );
     distro_mark(
         ui.painter(),

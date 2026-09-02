@@ -17,16 +17,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use eframe::egui::{Color32, Context, Stroke, Vec2, Visuals};
+use eframe::egui::{Color32, Context, Painter, Pos2, Rect, Shape, Stroke, Vec2, Visuals, vec2};
 
 pub const PALE_SKY: Color32 = Color32::from_rgb(0xCD, 0xED, 0xFE);
 pub const ACCENT: Color32 = Color32::from_rgb(0xE9, 0xFC, 0x12);
 pub const NAVY: Color32 = Color32::from_rgb(0x1A, 0x36, 0x5D);
-
-/// Chris's sun PNG. Shown in dark mode; click switches to light.
-pub const SUN_DARK_MODE_PNG: &[u8] = include_bytes!("../assets/theme/sun-dark-mode.png");
-/// Chris's moon PNG. Shown in light mode; click switches to dark.
-pub const MOON_LIGHT_MODE_PNG: &[u8] = include_bytes!("../assets/theme/moon-light-mode.png");
 
 const CONFIG_DIR_NAME: &str = "linux-it-guy-toolbox";
 const THEME_FILE_NAME: &str = "theme";
@@ -184,8 +179,8 @@ impl Palette {
             nav_selected: mix(NAVY, PALE_SKY, 0.16),
             nav_hover: mix(NAVY, PALE_SKY, 0.10),
             nav_marker: ACCENT,
-            chip_selected: surface,
-            chip_idle: mix(NAVY, PALE_SKY, 0.10),
+            chip_selected: ACCENT,
+            chip_idle: NAVY,
             chip_idle_text: PALE_SKY,
             chip_selected_text: NAVY,
             filter_selected_fill: ACCENT,
@@ -245,10 +240,10 @@ impl Palette {
             nav_selected: mix(PALE_SKY, NAVY, 0.12),
             nav_hover: mix(PALE_SKY, NAVY, 0.08),
             nav_marker: ACCENT,
-            chip_selected: surface,
-            chip_idle: mix(PALE_SKY, NAVY, 0.08),
+            chip_selected: ACCENT,
+            chip_idle: PALE_SKY,
             chip_idle_text: NAVY,
-            chip_selected_text: PALE_SKY,
+            chip_selected_text: NAVY,
             filter_selected_fill: ACCENT,
             filter_selected_text: NAVY,
             filter_idle_text: NAVY,
@@ -268,6 +263,149 @@ impl Palette {
             cancel_text: NAVY,
         }
     }
+
+    /// Sun in dark mode (switch to light), moon in light mode (switch to dark).
+    /// Stroke-only vectors — no raster, no circular button chrome.
+    pub fn paint_toggle_icon(&self, painter: &Painter, rect: Rect) {
+        match self.mode.toggle_icon() {
+            ThemeIcon::Sun => paint_sun(painter, rect, self.chrome_text),
+            ThemeIcon::Moon => paint_moon(painter, rect, self.chrome_text),
+        }
+    }
+}
+
+/// Hollow ring + eight short rays at 45° (stroke only, rounded caps).
+pub fn paint_sun(painter: &Painter, rect: Rect, color: Color32) {
+    let center = rect.center();
+    let size = rect.width().min(rect.height());
+    let stroke_w = (size * 0.09).clamp(1.5, 2.4);
+    let stroke = Stroke::new(stroke_w, color);
+    let ring_r = size * 0.22;
+    painter.circle_stroke(center, ring_r, stroke);
+
+    let ray_inner = ring_r + size * 0.11;
+    let ray_outer = size * 0.44;
+    let cap_r = stroke_w * 0.5;
+    for angle in sun_ray_angles() {
+        let dir = vec2(angle.cos(), angle.sin());
+        let start = center + dir * ray_inner;
+        let end = center + dir * ray_outer;
+        painter.line_segment([start, end], stroke);
+        painter.circle_filled(start, cap_r, color);
+        painter.circle_filled(end, cap_r, color);
+    }
+}
+
+/// Waning crescent outline facing right (stroke only, no fill).
+pub fn paint_moon(painter: &Painter, rect: Rect, color: Color32) {
+    let size = rect.width().min(rect.height());
+    let stroke_w = (size * 0.09).clamp(1.5, 2.4);
+    painter.add(Shape::closed_line(
+        crescent_outline(rect),
+        Stroke::new(stroke_w, color),
+    ));
+}
+
+fn sun_ray_angles() -> [f32; 8] {
+    core::array::from_fn(|i| (i as f32) * std::f32::consts::TAU / 8.0)
+}
+
+fn crescent_outline(rect: Rect) -> Vec<Pos2> {
+    let center = rect.center();
+    let size = rect.width().min(rect.height());
+    let outer_c = center + vec2(-size * 0.04, 0.0);
+    let outer_r = size * 0.36;
+    let inner_c = center + vec2(size * 0.15, 0.0);
+    let inner_r = size * 0.30;
+    let steps = 28;
+
+    if let Some((top, bot)) = circle_intersections(outer_c, outer_r, inner_c, inner_r) {
+        let mut pts = sample_arc(outer_c, outer_r, top, bot, std::f32::consts::PI, steps);
+        let inner = sample_arc(inner_c, inner_r, bot, top, std::f32::consts::PI, steps);
+        pts.extend(inner.into_iter().skip(1));
+        return pts;
+    }
+
+    fallback_crescent(center, size, steps)
+}
+
+fn fallback_crescent(center: Pos2, size: f32, steps: usize) -> Vec<Pos2> {
+    let outer_c = center + vec2(-size * 0.05, 0.0);
+    let outer_r = size * 0.36;
+    let inner_c = center + vec2(size * 0.16, 0.0);
+    let inner_r = size * 0.30;
+    let mid = std::f32::consts::PI;
+    let span = 1.18_f32;
+    let mut pts = Vec::with_capacity(steps * 2);
+    for i in 0..=steps {
+        let t = i as f32 / steps as f32;
+        let angle = (mid + span) - t * (2.0 * span);
+        pts.push(outer_c + vec2(angle.cos(), angle.sin()) * outer_r);
+    }
+    let top = pts[0];
+    let bot = pts[steps];
+    for i in 1..steps {
+        let t = i as f32 / steps as f32;
+        let angle = lerp_angle((bot - inner_c).angle(), (top - inner_c).angle(), t);
+        pts.push(inner_c + vec2(angle.cos(), angle.sin()) * inner_r);
+    }
+    pts
+}
+
+fn circle_intersections(c0: Pos2, r0: f32, c1: Pos2, r1: f32) -> Option<(Pos2, Pos2)> {
+    let delta = c1 - c0;
+    let dist = delta.length();
+    if dist < f32::EPSILON || dist > r0 + r1 || dist < (r0 - r1).abs() {
+        return None;
+    }
+    let a = (r0 * r0 - r1 * r1 + dist * dist) / (2.0 * dist);
+    let h = (r0 * r0 - a * a).max(0.0).sqrt();
+    let mid = c0 + delta * (a / dist);
+    let perp = vec2(-delta.y, delta.x) * (h / dist);
+    let p_a = mid + perp;
+    let p_b = mid - perp;
+    if p_a.y <= p_b.y {
+        Some((p_a, p_b))
+    } else {
+        Some((p_b, p_a))
+    }
+}
+
+fn sample_arc(
+    center: Pos2,
+    radius: f32,
+    from: Pos2,
+    to: Pos2,
+    via: f32,
+    steps: usize,
+) -> Vec<Pos2> {
+    let start = (from - center).angle();
+    let end = (to - center).angle();
+    let ccw = wrap_tau(end - start);
+    let cw = wrap_tau(start - end);
+    let via_ccw = wrap_tau(via - start);
+    let (delta, count) = if via_ccw <= ccw + 1.0e-3 {
+        (ccw, steps)
+    } else {
+        (-cw, steps)
+    };
+    (0..=count)
+        .map(|i| {
+            let t = i as f32 / count as f32;
+            let angle = start + delta * t;
+            center + vec2(angle.cos(), angle.sin()) * radius
+        })
+        .collect()
+}
+
+fn wrap_tau(angle: f32) -> f32 {
+    angle.rem_euclid(std::f32::consts::TAU)
+}
+
+fn lerp_angle(from: f32, to: f32, t: f32) -> f32 {
+    let delta =
+        (to - from + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+    from + delta * t
 }
 
 pub fn apply_theme(ctx: &Context, mode: ThemeMode) {
@@ -406,6 +544,7 @@ fn yellow_on_pale_sky_is_poor_contrast() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use eframe::egui::pos2;
 
     #[test]
     fn brand_hex_values_are_exact() {
@@ -442,6 +581,10 @@ mod tests {
         assert_eq!(palette.cta_text, NAVY);
         assert_eq!(palette.filter_selected_fill, ACCENT);
         assert_eq!(palette.filter_selected_text, NAVY);
+        assert_eq!(palette.chip_selected, ACCENT);
+        assert_eq!(palette.chip_selected_text, NAVY);
+        assert_eq!(palette.chip_idle, NAVY);
+        assert_eq!(palette.chip_idle, palette.background);
         assert_eq!(palette.tile, NAVY);
         assert_eq!(palette.tile, palette.background);
         assert_eq!(palette.toolbar, NAVY);
@@ -459,6 +602,10 @@ mod tests {
         assert_eq!(palette.cta_text, NAVY);
         assert_eq!(palette.filter_selected_fill, ACCENT);
         assert_eq!(palette.filter_selected_text, NAVY);
+        assert_eq!(palette.chip_selected, ACCENT);
+        assert_eq!(palette.chip_selected_text, NAVY);
+        assert_eq!(palette.chip_idle, PALE_SKY);
+        assert_eq!(palette.chip_idle, palette.background);
         assert_eq!(palette.tile, PALE_SKY);
         assert_eq!(palette.tile, palette.background);
         assert_eq!(palette.toolbar, PALE_SKY);
@@ -496,6 +643,11 @@ mod tests {
             assert!(
                 contrast_ratio(palette.filter_selected_text, palette.filter_selected_fill) >= 4.5,
                 "{:?} filter chip contrast",
+                palette.mode
+            );
+            assert!(
+                contrast_ratio(palette.chip_selected_text, palette.chip_selected) >= 4.5,
+                "{:?} selected distro chip contrast",
                 palette.mode
             );
             assert!(
@@ -538,24 +690,68 @@ mod tests {
     }
 
     #[test]
-    fn chris_theme_icons_are_embedded_pngs() {
-        assert_eq!(&SUN_DARK_MODE_PNG[..8], b"\x89PNG\r\n\x1a\n");
-        assert_eq!(&MOON_LIGHT_MODE_PNG[..8], b"\x89PNG\r\n\x1a\n");
+    fn theme_icons_are_not_shipped_as_rasters() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        assert_eq!(
-            SUN_DARK_MODE_PNG,
-            std::fs::read(root.join("assets/theme/sun-dark-mode.png"))
-                .unwrap()
-                .as_slice()
+        assert!(
+            !root.join("assets/theme/sun-dark-mode.png").exists(),
+            "sun PNG must not be shipped"
         );
-        assert_eq!(
-            MOON_LIGHT_MODE_PNG,
-            std::fs::read(root.join("assets/theme/moon-light-mode.png"))
-                .unwrap()
-                .as_slice()
+        assert!(
+            !root.join("assets/theme/moon-light-mode.png").exists(),
+            "moon PNG must not be shipped"
         );
-        assert!(crate::logos::decode_png(SUN_DARK_MODE_PNG).is_some());
-        assert!(crate::logos::decode_png(MOON_LIGHT_MODE_PNG).is_some());
+        let prod_theme = include_str!("theme.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .expect("theme module");
+        let prod_main = include_str!("main.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .expect("main module");
+        assert!(!prod_theme.contains("include_bytes!"));
+        assert!(!prod_main.contains("assets/theme/"));
+    }
+
+    #[test]
+    fn sun_has_eight_rays_at_45_degrees() {
+        let angles = sun_ray_angles();
+        assert_eq!(angles.len(), 8);
+        for (i, angle) in angles.iter().enumerate() {
+            let expected = (i as f32) * 45.0_f32.to_radians();
+            assert!((angle - expected).abs() < 1.0e-5);
+        }
+    }
+
+    #[test]
+    fn moon_outline_is_a_waning_crescent_facing_right() {
+        let rect = Rect::from_center_size(pos2(40.0, 40.0), vec2(32.0, 32.0));
+        let pts = crescent_outline(rect);
+        assert!(pts.len() >= 20);
+        let min_x = pts.iter().map(|p| p.x).fold(f32::MAX, f32::min);
+        let max_x = pts.iter().map(|p| p.x).fold(f32::MIN, f32::max);
+        let min_y = pts.iter().map(|p| p.y).fold(f32::MAX, f32::min);
+        let max_y = pts.iter().map(|p| p.y).fold(f32::MIN, f32::max);
+        let leftmost = pts
+            .iter()
+            .copied()
+            .min_by(|a, b| a.x.total_cmp(&b.x))
+            .unwrap();
+        assert!(
+            leftmost.x < rect.center().x,
+            "convex outer arc must sit on the left"
+        );
+        assert!(
+            (leftmost.y - rect.center().y).abs() < 3.0,
+            "left bulge should be near the horizontal midline"
+        );
+        assert!(max_x - min_x > 8.0);
+        assert!(max_y - min_y > 12.0);
+        let mid_x = (min_x + max_x) * 0.5;
+        let right_half: Vec<_> = pts.iter().filter(|p| p.x > mid_x).copied().collect();
+        assert!(
+            !right_half.is_empty(),
+            "horns should reach the right half of the icon"
+        );
     }
 
     #[test]

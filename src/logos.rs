@@ -1,10 +1,10 @@
 //! Logo SVG markup compiled into the binary.
 //!
-//! Distro logos (`assets/distros/*.svg`) are embedded with `include_str!` and
-//! rasterized from that markup. App tile logos in `assets/icons` are PNG and
-//! are embedded separately with `include_bytes!` in `main`. Neither path is
-//! read from disk at runtime, so logos still render if `assets/` is missing
-//! next to the executable.
+//! Distro logos live in `assets/distros/*.svg` and app tile logos in
+//! `assets/logos/*.svg`. Both are embedded with `include_str!` and rasterized
+//! from that markup. Nothing under `assets/` is read from disk at runtime, so
+//! logos still render if the checkout's assets folder is missing next to the
+//! executable.
 
 use eframe::egui::ColorImage;
 
@@ -13,6 +13,63 @@ pub const DISTRO_SVGS: &[(&str, &str)] = &[
     ("arch", include_str!("../assets/distros/arch.svg")),
     ("debian", include_str!("../assets/distros/debian.svg")),
     ("fedora", include_str!("../assets/distros/fedora.svg")),
+];
+
+/// App tile SVG markup. Brave Origin uses the official outlined lion, not the
+/// orange Brave Browser mark.
+pub const APP_SVGS: &[(&str, &str)] = &[
+    ("audacity", include_str!("../assets/logos/audacity.svg")),
+    ("bottles", include_str!("../assets/logos/bottles.svg")),
+    ("boxes", include_str!("../assets/logos/boxes.svg")),
+    ("brave", include_str!("../assets/logos/brave.svg")),
+    (
+        "brave-origin",
+        include_str!("../assets/logos/brave-origin.svg"),
+    ),
+    ("discord", include_str!("../assets/logos/discord.svg")),
+    ("firefox", include_str!("../assets/logos/firefox.svg")),
+    ("gimp", include_str!("../assets/logos/gimp.svg")),
+    (
+        "google-chrome",
+        include_str!("../assets/logos/google-chrome.svg"),
+    ),
+    ("htop", include_str!("../assets/logos/htop.svg")),
+    (
+        "libreoffice",
+        include_str!("../assets/logos/libreoffice.svg"),
+    ),
+    ("localsend", include_str!("../assets/logos/localsend.svg")),
+    ("lutris", include_str!("../assets/logos/lutris.svg")),
+    (
+        "microsoft-edge",
+        include_str!("../assets/logos/microsoft-edge.svg"),
+    ),
+    ("mpv", include_str!("../assets/logos/mpv.svg")),
+    ("obs-studio", include_str!("../assets/logos/obs-studio.svg")),
+    ("onlyoffice", include_str!("../assets/logos/onlyoffice.svg")),
+    ("opera", include_str!("../assets/logos/opera.svg")),
+    (
+        "protonup-qt",
+        include_str!("../assets/logos/protonup-qt.svg"),
+    ),
+    (
+        "pycharm-community",
+        include_str!("../assets/logos/pycharm-community.svg"),
+    ),
+    ("signal", include_str!("../assets/logos/signal.svg")),
+    ("slack", include_str!("../assets/logos/slack.svg")),
+    ("steam", include_str!("../assets/logos/steam.svg")),
+    (
+        "thunderbird",
+        include_str!("../assets/logos/thunderbird.svg"),
+    ),
+    (
+        "visual-studio-code",
+        include_str!("../assets/logos/visual-studio-code.svg"),
+    ),
+    ("vivaldi", include_str!("../assets/logos/vivaldi.svg")),
+    ("vlc", include_str!("../assets/logos/vlc.svg")),
+    ("zen", include_str!("../assets/logos/zen.svg")),
 ];
 
 pub struct Raster {
@@ -54,32 +111,51 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    fn assert_markup(name: &str, svg: &str) {
+        assert!(
+            svg.contains("<svg"),
+            "{name} markup is missing an <svg> tag"
+        );
+        assert!(
+            !svg.starts_with("assets/"),
+            "{name} looks like a filesystem path rather than markup"
+        );
+    }
+
+    fn assert_raster(name: &str, svg: &str) {
+        let raster = rasterize_svg_markup(svg, 64)
+            .unwrap_or_else(|| panic!("{name} SVG failed to rasterize"));
+        assert_eq!(raster.size, [64, 64], "{name}");
+        assert_eq!(raster.rgba.len(), 64 * 64 * 4, "{name}");
+        assert!(
+            raster.rgba.chunks(4).any(|px| px[3] != 0),
+            "{name} raster was fully transparent"
+        );
+    }
+
     #[test]
     fn distro_svgs_are_embedded_markup() {
         assert_eq!(DISTRO_SVGS.len(), 3);
         for (name, svg) in DISTRO_SVGS {
-            assert!(
-                svg.contains("<svg"),
-                "{name} markup is missing an <svg> tag"
-            );
-            assert!(
-                !svg.starts_with("assets/"),
-                "{name} looks like a filesystem path rather than markup"
-            );
+            assert_markup(name, svg);
         }
     }
 
     #[test]
+    fn app_svgs_are_embedded_markup() {
+        assert!(APP_SVGS.len() > 20);
+        for (name, svg) in APP_SVGS {
+            assert_markup(name, svg);
+        }
+        let keys: Vec<&str> = APP_SVGS.iter().map(|(key, _)| *key).collect();
+        assert!(keys.contains(&"brave"));
+        assert!(keys.contains(&"brave-origin"));
+    }
+
+    #[test]
     fn rasterize_uses_embedded_markup_not_assets_dir() {
-        for (name, svg) in DISTRO_SVGS {
-            let raster = rasterize_svg_markup(svg, 64)
-                .unwrap_or_else(|| panic!("{name} SVG failed to rasterize"));
-            assert_eq!(raster.size, [64, 64], "{name}");
-            assert_eq!(raster.rgba.len(), 64 * 64 * 4, "{name}");
-            assert!(
-                raster.rgba.chunks(4).any(|px| px[3] != 0),
-                "{name} raster was fully transparent"
-            );
+        for (name, svg) in DISTRO_SVGS.iter().chain(APP_SVGS.iter()) {
+            assert_raster(name, svg);
         }
     }
 
@@ -92,6 +168,51 @@ mod tests {
                 .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
             assert_eq!(*embedded, on_disk.as_str(), "{name}");
         }
+        for (name, embedded) in APP_SVGS {
+            let path = root.join("assets/logos").join(format!("{name}.svg"));
+            let on_disk = std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+            assert_eq!(*embedded, on_disk.as_str(), "{name}");
+        }
+    }
+
+    #[test]
+    fn assets_icons_dir_is_gone() {
+        let icons = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/icons");
+        assert!(
+            !icons.exists(),
+            "assets/icons must be removed; app logos are compile-time SVG now"
+        );
+    }
+
+    #[test]
+    fn brave_origin_is_not_the_orange_brave_mark() {
+        let brave = APP_SVGS
+            .iter()
+            .find(|(key, _)| *key == "brave")
+            .map(|(_, svg)| *svg)
+            .expect("brave");
+        let origin = APP_SVGS
+            .iter()
+            .find(|(key, _)| *key == "brave-origin")
+            .map(|(_, svg)| *svg)
+            .expect("brave-origin");
+        assert_ne!(brave, origin);
+        assert!(
+            origin.contains("fill=\"#111111\"") || origin.contains("fill=\"#000000\""),
+            "Origin lion should be black monochrome, got: {}",
+            &origin[..origin.len().min(200)]
+        );
+        assert!(
+            !origin.to_ascii_lowercase().contains("#fb542b"),
+            "Origin lion must not use the orange Brave fill"
+        );
+        let brave_raster = rasterize_svg_markup(brave, 32).unwrap();
+        let origin_raster = rasterize_svg_markup(origin, 32).unwrap();
+        assert_ne!(
+            brave_raster.rgba, origin_raster.rgba,
+            "Brave Origin raster must not match Brave Browser"
+        );
     }
 
     #[test]

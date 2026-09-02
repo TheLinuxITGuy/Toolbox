@@ -12,10 +12,9 @@ use std::{
 };
 
 use eframe::egui::{
-    self, Align, Align2, Button, CentralPanel, Color32, ColorImage, Context, FontData,
-    FontDefinitions, FontFamily, FontId, Frame, Grid, Key, Layout, Painter, Panel, Pos2, Rect,
-    RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, TextureHandle, TextureOptions, Ui,
-    Vec2, pos2, vec2,
+    self, Align, Align2, Button, CentralPanel, Color32, Context, FontData, FontDefinitions,
+    FontFamily, FontId, Frame, Grid, Key, Layout, Painter, Panel, Pos2, Rect, RichText, ScrollArea,
+    Sense, Stroke, StrokeKind, TextEdit, TextureHandle, TextureOptions, Ui, Vec2, pos2, vec2,
 };
 
 use catalog::{AdminTask, AppEntry, CatalogLoad, Task, admin_tasks, find_base_dir, load_apps};
@@ -951,109 +950,16 @@ fn install_fonts(ctx: &Context) {
     ctx.set_fonts(fonts);
 }
 
-// PNG app logos from assets/icons, compiled into the binary. Missing the
+// App tile logos are SVG markup compiled in via logos.rs. Missing the
 // checkout's assets folder at runtime does not affect these textures.
 fn load_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
     let mut icons = HashMap::new();
-    for (key, bytes) in [
-        (
-            "audacity",
-            include_bytes!("../assets/icons/audacity.png").as_slice(),
-        ),
-        (
-            "bottles",
-            include_bytes!("../assets/icons/bottles.png").as_slice(),
-        ),
-        (
-            "boxes",
-            include_bytes!("../assets/icons/boxes.png").as_slice(),
-        ),
-        (
-            "brave",
-            include_bytes!("../assets/icons/brave.png").as_slice(),
-        ),
-        (
-            "discord",
-            include_bytes!("../assets/icons/discord.png").as_slice(),
-        ),
-        (
-            "firefox",
-            include_bytes!("../assets/icons/firefox.png").as_slice(),
-        ),
-        (
-            "gimp",
-            include_bytes!("../assets/icons/gimp.png").as_slice(),
-        ),
-        (
-            "google-chrome",
-            include_bytes!("../assets/icons/google-chrome.png").as_slice(),
-        ),
-        (
-            "localsend",
-            include_bytes!("../assets/icons/localsend.png").as_slice(),
-        ),
-        (
-            "lutris",
-            include_bytes!("../assets/icons/lutris.png").as_slice(),
-        ),
-        (
-            "microsoft-edge",
-            include_bytes!("../assets/icons/microsoft-edge.png").as_slice(),
-        ),
-        (
-            "obs-studio",
-            include_bytes!("../assets/icons/obs-studio.png").as_slice(),
-        ),
-        (
-            "onlyoffice",
-            include_bytes!("../assets/icons/onlyoffice.png").as_slice(),
-        ),
-        (
-            "opera",
-            include_bytes!("../assets/icons/opera.png").as_slice(),
-        ),
-        (
-            "protonup-qt",
-            include_bytes!("../assets/icons/protonup-qt.png").as_slice(),
-        ),
-        (
-            "pycharm-community",
-            include_bytes!("../assets/icons/pycharm-community.png").as_slice(),
-        ),
-        (
-            "signal",
-            include_bytes!("../assets/icons/signal.png").as_slice(),
-        ),
-        (
-            "slack",
-            include_bytes!("../assets/icons/slack.png").as_slice(),
-        ),
-        (
-            "steam",
-            include_bytes!("../assets/icons/steam.png").as_slice(),
-        ),
-        (
-            "thunderbird",
-            include_bytes!("../assets/icons/thunderbird.png").as_slice(),
-        ),
-        (
-            "visual-studio-code",
-            include_bytes!("../assets/icons/visual-studio-code.png").as_slice(),
-        ),
-        (
-            "vivaldi",
-            include_bytes!("../assets/icons/vivaldi.png").as_slice(),
-        ),
-        ("vlc", include_bytes!("../assets/icons/vlc.png").as_slice()),
-        ("zen", include_bytes!("../assets/icons/zen.png").as_slice()),
-    ] {
-        if let Ok(image) = image::load_from_memory(bytes) {
-            let rgba = image.to_rgba8();
-            let size = [rgba.width() as usize, rgba.height() as usize];
-            let color_image = ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+    for &(key, svg) in crate::logos::APP_SVGS {
+        if let Some(raster) = crate::logos::rasterize_svg_markup(svg, 64) {
+            let color_image = crate::logos::color_image_from_raster(&raster);
             icons.insert(
                 key,
-                ctx.load_texture(key, color_image, TextureOptions::LINEAR),
+                ctx.load_texture(format!("app-{key}"), color_image, TextureOptions::LINEAR),
             );
         }
     }
@@ -1361,11 +1267,15 @@ fn paint_checkbox(painter: &Painter, rect: Rect, selected: bool) {
 
 fn paint_app_icon(painter: &Painter, rect: Rect, label: &str, icon: Option<&TextureHandle>) {
     if let Some(icon) = icon {
-        painter.circle_filled(
-            rect.center(),
-            rect.width() / 2.0,
-            Color32::from_rgb(24, 29, 34),
-        );
+        // Origin's official mark is a black outlined lion. Seat it on a light
+        // disc so it stays readable on Toolbox's dark tiles without reusing
+        // the orange Brave Browser logo.
+        let background = if label == "Brave Origin" {
+            Color32::from_rgb(242, 244, 246)
+        } else {
+            Color32::from_rgb(24, 29, 34)
+        };
+        painter.circle_filled(rect.center(), rect.width() / 2.0, background);
         painter.image(
             icon.id(),
             rect,
@@ -1872,7 +1782,7 @@ fn app_mark(label: &str) -> &str {
         "PyCharm Community" => "PC",
         "Google Chrome" => "C",
         "Microsoft Edge" => "E",
-        "Brave Browser" | "Brave Origin" => "B",
+        "Brave Origin" => "O",
         "Thunderbird" => "T",
         "ProtonUp-Qt" => "P",
         _ => label.get(0..1).unwrap_or("*"),
@@ -1931,14 +1841,18 @@ fn icon_key(label: &str) -> &'static str {
         "Audacity" | "audacity" => "audacity",
         "Bottles" | "bottles" => "bottles",
         "Boxes" | "gnome-boxes" => "boxes",
-        "Brave Browser" | "Brave Origin" | "brave" | "brave-origin" => "brave",
+        "Brave Browser" | "brave" => "brave",
+        "Brave Origin" | "brave-origin" => "brave-origin",
         "Discord" | "discord" => "discord",
         "Firefox" | "firefox" => "firefox",
         "GIMP" | "gimp" => "gimp",
         "Google Chrome" | "google-chrome" => "google-chrome",
+        "htop" => "htop",
+        "LibreOffice" | "libreoffice" => "libreoffice",
         "LocalSend" | "localsend" => "localsend",
         "Lutris" | "lutris" => "lutris",
         "Microsoft Edge" | "microsoft-edge" => "microsoft-edge",
+        "mpv" => "mpv",
         "OBS Studio" | "obs" => "obs-studio",
         "OnlyOffice" | "onlyoffice-desktopeditors" => "onlyoffice",
         "Opera" | "opera" => "opera",

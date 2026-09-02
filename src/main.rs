@@ -1,4 +1,5 @@
 mod catalog;
+mod logos;
 mod runner;
 mod system;
 mod validate;
@@ -950,6 +951,8 @@ fn install_fonts(ctx: &Context) {
     ctx.set_fonts(fonts);
 }
 
+// PNG app logos from assets/icons, compiled into the binary. Missing the
+// checkout's assets folder at runtime does not affect these textures.
 fn load_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
     let mut icons = HashMap::new();
     for (key, bytes) in [
@@ -1059,21 +1062,9 @@ fn load_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
 
 fn load_distro_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
     let mut icons = HashMap::new();
-    for (key, svg) in [
-        (
-            "arch",
-            include_bytes!("../assets/distros/arch.svg").as_slice(),
-        ),
-        (
-            "debian",
-            include_bytes!("../assets/distros/debian.svg").as_slice(),
-        ),
-        (
-            "fedora",
-            include_bytes!("../assets/distros/fedora.svg").as_slice(),
-        ),
-    ] {
-        if let Some(color_image) = rasterize_svg(svg, 64) {
+    for &(key, svg) in crate::logos::DISTRO_SVGS {
+        if let Some(raster) = crate::logos::rasterize_svg_markup(svg, 64) {
+            let color_image = crate::logos::color_image_from_raster(&raster);
             icons.insert(
                 key,
                 ctx.load_texture(format!("distro-{key}"), color_image, TextureOptions::LINEAR),
@@ -1081,22 +1072,6 @@ fn load_distro_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
         }
     }
     icons
-}
-
-fn rasterize_svg(svg: &[u8], size: u32) -> Option<ColorImage> {
-    let options = usvg::Options::default();
-    let tree = usvg::Tree::from_data(svg, &options).ok()?;
-    let mut pixmap = tiny_skia::Pixmap::new(size, size)?;
-    let tree_size = tree.size();
-    let scale = (size as f32 / tree_size.width()).min(size as f32 / tree_size.height());
-    let tx = (size as f32 - tree_size.width() * scale) / 2.0;
-    let ty = (size as f32 - tree_size.height() * scale) / 2.0;
-    let transform = tiny_skia::Transform::from_translate(tx, ty).pre_scale(scale, scale);
-    resvg::render(&tree, transform, &mut pixmap.as_mut());
-    Some(ColorImage::from_rgba_unmultiplied(
-        [size as usize, size as usize],
-        pixmap.data(),
-    ))
 }
 
 fn apply_theme(ctx: &Context) {
@@ -1874,7 +1849,7 @@ fn distro_selected(label: &str, package_manager: &str, distro_name: &str) -> boo
 fn app_color(label: &str) -> Color32 {
     match label {
         "Firefox" => Color32::from_rgb(238, 90, 47),
-        "Brave Browser" => Color32::from_rgb(246, 85, 42),
+        "Brave Browser" | "Brave Origin" => Color32::from_rgb(246, 85, 42),
         "Google Chrome" => Color32::from_rgb(66, 133, 244),
         "Microsoft Edge" => Color32::from_rgb(19, 158, 175),
         "Opera" => Color32::from_rgb(218, 38, 55),
@@ -1897,7 +1872,7 @@ fn app_mark(label: &str) -> &str {
         "PyCharm Community" => "PC",
         "Google Chrome" => "C",
         "Microsoft Edge" => "E",
-        "Brave Browser" => "B",
+        "Brave Browser" | "Brave Origin" => "B",
         "Thunderbird" => "T",
         "ProtonUp-Qt" => "P",
         _ => label.get(0..1).unwrap_or("*"),
@@ -1907,6 +1882,7 @@ fn app_mark(label: &str) -> &str {
 fn app_description(label: &str) -> &'static str {
     match label {
         "Brave Browser" => "Privacy-focused browser",
+        "Brave Origin" => "Native Origin browser",
         "Google Chrome" => "The web browser from Google",
         "Firefox" => "Web browser from Mozilla",
         "Microsoft Edge" => "Microsoft's web browser",
@@ -1955,7 +1931,7 @@ fn icon_key(label: &str) -> &'static str {
         "Audacity" | "audacity" => "audacity",
         "Bottles" | "bottles" => "bottles",
         "Boxes" | "gnome-boxes" => "boxes",
-        "Brave Browser" | "brave" => "brave",
+        "Brave Browser" | "Brave Origin" | "brave" | "brave-origin" => "brave",
         "Discord" | "discord" => "discord",
         "Firefox" | "firefox" => "firefox",
         "GIMP" | "gimp" => "gimp",

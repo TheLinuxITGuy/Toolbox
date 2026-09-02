@@ -212,9 +212,88 @@ ensure_flatpak() {
     fi
 }
 
+brave_origin_is_installed() {
+    local candidate
+    while IFS= read -r candidate; do
+        require_package_name "$candidate"
+        if native_installed "$candidate"; then
+            return 0
+        fi
+    done < <(brave_origin_package_candidates "$PACKAGE_MANAGER")
+    return 1
+}
+
+# Download the pinned Brave installer, GPG-verify it, then run that file with
+# FLAVOR=origin. Never curl|sh and never eval.
+install_brave_origin() {
+    local tmp key_file wrap_dir
+
+    if brave_origin_is_installed; then
+        echo "brave-origin is already installed. Skipping installation."
+        return 0
+    fi
+
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "curl is required to download the Brave installer." >&2
+        exit 1
+    fi
+    if ! command -v gpg >/dev/null 2>&1; then
+        echo "gpg is required to verify the Brave installer." >&2
+        exit 1
+    fi
+
+    key_file="${SCRIPT_DIR}/assets/keys/brave-install.sh.asc"
+    if [[ ! -f "$key_file" ]]; then
+        echo "Brave installer signing key was not found at $key_file." >&2
+        exit 1
+    fi
+
+    tmp=$(mktemp -d) || exit 1
+    chmod 700 "$tmp"
+    wrap_dir="$tmp/sudo-wrap"
+
+    if ! download_pinned_brave_file "$BRAVE_INSTALL_SH_URL" "$tmp/install.sh"; then
+        rm -rf "$tmp"
+        exit 1
+    fi
+    if ! download_pinned_brave_file "$BRAVE_INSTALL_SH_ASC_URL" "$tmp/install.sh.asc"; then
+        rm -rf "$tmp"
+        exit 1
+    fi
+
+    echo "Verifying Brave installer signature..."
+    if ! verify_brave_install_script "$tmp/install.sh" "$tmp/install.sh.asc" "$key_file"; then
+        rm -rf "$tmp"
+        echo "Refusing to run unverified Brave installer." >&2
+        exit 1
+    fi
+
+    chmod 700 "$tmp/install.sh"
+    if ! install_noninteractive_sudo_wrapper "$wrap_dir"; then
+        rm -rf "$tmp"
+        exit 1
+    fi
+
+    echo "Running verified Brave Origin installer..."
+    # Execute the downloaded file. Do not pipe curl to sh and do not eval.
+    if ! PATH="$wrap_dir:$PATH" FLAVOR=origin CHANNEL=release "$tmp/install.sh"; then
+        rm -rf "$tmp"
+        echo "Brave Origin installer failed." >&2
+        exit 1
+    fi
+
+    rm -rf "$tmp"
+}
+
 install_native() {
     local package=$1
     require_package_name "$package"
+
+    if [[ "$package" == "brave-origin" ]]; then
+        install_brave_origin
+        return
+    fi
+
     if native_installed "$package"; then
         echo "$package is already installed. Skipping installation."
         return 0
@@ -240,7 +319,7 @@ install_native() {
     esac
 }
 
-remove_native() {
+remove_native_package() {
     local package=$1
     require_package_name "$package"
     if ! native_installed "$package"; then
@@ -259,6 +338,28 @@ remove_native() {
             sudo dnf remove -y -- "$package"
             ;;
     esac
+}
+
+remove_native() {
+    local package=$1
+    require_package_name "$package"
+
+    if [[ "$package" == "brave-origin" ]]; then
+        local candidate removed=0
+        while IFS= read -r candidate; do
+            require_package_name "$candidate"
+            if native_installed "$candidate"; then
+                remove_native_package "$candidate"
+                removed=1
+            fi
+        done < <(brave_origin_package_candidates "$PACKAGE_MANAGER")
+        if [[ "$removed" -eq 0 ]]; then
+            echo "brave-origin is not installed. Skipping removal."
+        fi
+        return 0
+    fi
+
+    remove_native_package "$package"
 }
 
 install_flatpak_app() {

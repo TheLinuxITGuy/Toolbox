@@ -1389,19 +1389,14 @@ fn paint_row_background(
     palette: &Palette,
 ) {
     painter.rect_filled(rect, 4.0, palette.tile);
-    painter.rect_stroke(
-        rect,
-        4.0,
-        Stroke::new(
-            1.0_f32,
-            if selected {
-                palette.accent
-            } else {
-                palette.border
-            },
-        ),
-        StrokeKind::Inside,
-    );
+    if selected {
+        painter.rect_stroke(
+            rect,
+            4.0,
+            Stroke::new(1.0_f32, palette.accent),
+            StrokeKind::Inside,
+        );
+    }
 }
 
 fn paint_checkbox(painter: &Painter, rect: Rect, selected: bool, palette: &Palette) {

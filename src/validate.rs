@@ -231,6 +231,8 @@ mod tests {
             "libreoffice",
             "gparted",
             "htop",
+            "brave-origin",
+            "brave-origin-bin",
         ] {
             assert!(is_package_name(name), "{name}");
         }
@@ -340,6 +342,7 @@ mod tests {
     #[test]
     fn labels_and_notes_reject_control_characters() {
         assert!(is_label("Brave Browser"));
+        assert!(is_label("Brave Origin"));
         assert!(is_label("nala (rank mirrors) - Debian only"));
         assert!(!is_label("bad\nlabel"));
         assert!(!is_label("-sneaky"));
@@ -356,6 +359,8 @@ mod tests {
         let cases = [
             ("is_valid_package_name", "firefox", true),
             ("is_valid_package_name", "obs-studio", true),
+            ("is_valid_package_name", "brave-origin", true),
+            ("is_valid_package_name", "brave-origin-bin", true),
             ("is_valid_package_name", "-Syu", false),
             ("is_valid_package_name", "pkg;id", false),
             ("is_valid_flatpak_id", "com.brave.Browser", true),
@@ -385,5 +390,219 @@ mod tests {
                 "{func}({value:?}) expected {expected}"
             );
         }
+    }
+
+    fn toolbox_lib() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("toolbox-lib.sh")
+    }
+
+    fn bash_lib(script: &str) -> std::process::Output {
+        std::process::Command::new("bash")
+            .arg("-c")
+            .arg(format!("source \"$1\" && {script}"))
+            .arg("brave-test")
+            .arg(toolbox_lib())
+            .output()
+            .expect("run bash toolbox-lib helper")
+    }
+
+    #[test]
+    fn brave_download_urls_are_pinned_and_other_urls_are_rejected() {
+        let ok_script = bash_lib(
+            r#"
+            is_pinned_brave_download_url "$BRAVE_INSTALL_SH_URL" || exit 1
+            is_pinned_brave_download_url "$BRAVE_INSTALL_SH_ASC_URL" || exit 2
+            is_pinned_brave_download_url "https://evil.example/install.sh" && exit 3
+            is_pinned_brave_download_url "https://dl.brave.com/other.sh" && exit 4
+            dest=$(mktemp)
+            if download_pinned_brave_file "https://example.com/install.sh" "$dest"; then
+                rm -f "$dest"
+                exit 5
+            fi
+            rm -f "$dest"
+            [[ "$BRAVE_INSTALL_SH_URL" == "https://dl.brave.com/install.sh" ]] || exit 6
+            [[ "$BRAVE_INSTALL_SH_ASC_URL" == "https://dl.brave.com/install.sh.asc" ]] || exit 7
+            [[ "$BRAVE_INSTALL_SH_FINGERPRINT" == "D16166072CACDF2C9429CBF11BF41E37D039F691" ]] || exit 8
+            "#,
+        );
+        assert!(
+            ok_script.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&ok_script.stderr)
+        );
+    }
+
+    #[test]
+    fn brave_origin_package_candidates_match_distro() {
+        let output = bash_lib(
+            r#"
+            brave_origin_package_candidates pacman
+            echo ---
+            brave_origin_package_candidates apt
+            echo ---
+            brave_origin_package_candidates dnf
+            "#,
+        );
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let chunks: Vec<&str> = stdout.split("---\n").map(str::trim).collect();
+        assert_eq!(chunks[0], "brave-origin-bin\nbrave-origin");
+        assert_eq!(chunks[1], "brave-origin");
+        assert_eq!(chunks[2], "brave-origin");
+    }
+
+    #[test]
+    fn brave_gpg_verify_fails_closed_on_tampered_script() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let key = root.join("assets/keys/brave-install.sh.asc");
+        assert!(key.is_file(), "vendored Brave installer key");
+
+        let output = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(
+                r#"
+                source "$1"
+                tmp=$(mktemp -d)
+                printf '%s\n' '#!/bin/sh' 'echo pwned' > "$tmp/install.sh"
+                printf '%s\n' 'not a signature' > "$tmp/install.sh.asc"
+                if verify_brave_install_script "$tmp/install.sh" "$tmp/install.sh.asc" "$2"; then
+                    rm -rf "$tmp"
+                    exit 1
+                fi
+                rm -rf "$tmp"
+                "#,
+            )
+            .arg("brave-verify")
+            .arg(toolbox_lib())
+            .arg(&key)
+            .output()
+            .expect("run gpg fail-closed test");
+        assert!(
+            output.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("GPG verification of the Brave installer failed")
+                || stderr.contains("Failed to import"),
+            "unexpected stderr: {stderr}"
+        );
+    }
+
+    #[test]
+    fn brave_installer_helpers_do_not_pipe_curl_to_sh_or_eval() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let main = std::fs::read_to_string(root.join("main.sh")).unwrap();
+        let lib = std::fs::read_to_string(root.join("toolbox-lib.sh")).unwrap();
+        let combined = format!("{main}\n{lib}");
+
+        assert!(
+            !combined.contains("| FLAVOR=origin"),
+            "must not pipe the Brave installer into a shell"
+        );
+        assert!(
+            !combined.contains("curl -fsS https://dl.brave.com/install.sh |"),
+            "must not curl|sh the Brave installer"
+        );
+        assert!(
+            !combined.contains("eval "),
+            "must not eval the Brave installer"
+        );
+        assert!(
+            combined.contains("FLAVOR=origin CHANNEL=release"),
+            "verified installer must run with FLAVOR=origin"
+        );
+        assert!(
+            lib.contains("sudo -n"),
+            "nested sudo must be non-interactive"
+        );
+
+        for url in http_urls_containing(&combined, "brave") {
+            assert!(
+                url == "https://dl.brave.com/install.sh"
+                    || url == "https://dl.brave.com/install.sh.asc",
+                "unpinned Brave download URL in helpers: {url}"
+            );
+        }
+    }
+
+    fn http_urls_containing<'a>(text: &'a str, needle: &str) -> Vec<&'a str> {
+        text.split_whitespace()
+            .filter_map(|part| {
+                let start = part.find("https://")?;
+                let url = part[start..].trim_end_matches(|c: char| {
+                    matches!(c, '"' | '\'' | ')' | ';' | ',' | '`' | '.')
+                });
+                url.contains(needle).then_some(url)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn sudo_wrapper_invokes_real_sudo_with_n() {
+        let output = bash_lib(
+            r#"
+            tmp=$(mktemp -d)
+            install_noninteractive_sudo_wrapper "$tmp" || exit 1
+            grep -q -- '-n' "$tmp/sudo" || exit 2
+            if grep -q -- 'sudo -S' "$tmp/sudo"; then
+                rm -rf "$tmp"
+                exit 3
+            fi
+            test -x "$tmp/sudo" || exit 4
+            rm -rf "$tmp"
+            "#,
+        );
+        assert!(
+            output.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn brave_gpg_verify_accepts_official_signed_installer() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let key = root.join("assets/keys/brave-install.sh.asc");
+        let output = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(
+                r#"
+                source "$1"
+                tmp=$(mktemp -d)
+                if ! download_pinned_brave_file "$BRAVE_INSTALL_SH_URL" "$tmp/install.sh"; then
+                    rm -rf "$tmp"
+                    exit 1
+                fi
+                if ! download_pinned_brave_file "$BRAVE_INSTALL_SH_ASC_URL" "$tmp/install.sh.asc"; then
+                    rm -rf "$tmp"
+                    exit 2
+                fi
+                if ! verify_brave_install_script "$tmp/install.sh" "$tmp/install.sh.asc" "$2"; then
+                    rm -rf "$tmp"
+                    exit 3
+                fi
+                # Tampering after a good download must fail closed.
+                echo '# tampered' >> "$tmp/install.sh"
+                if verify_brave_install_script "$tmp/install.sh" "$tmp/install.sh.asc" "$2"; then
+                    rm -rf "$tmp"
+                    exit 4
+                fi
+                rm -rf "$tmp"
+                "#,
+            )
+            .arg("brave-verify-ok")
+            .arg(toolbox_lib())
+            .arg(&key)
+            .output()
+            .expect("run official installer verify test");
+        assert!(
+            output.status.success(),
+            "status={} stderr={} stdout={}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&output.stdout)
+        );
     }
 }

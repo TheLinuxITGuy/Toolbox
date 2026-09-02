@@ -557,6 +557,48 @@ mod tests {
         assert!(!load.apps.is_empty());
     }
 
+    #[test]
+    fn shipped_catalog_has_brave_origin_native_and_keeps_flatpak_brave() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let load = load_apps(&root);
+        assert!(load.error.is_none(), "{:?}", load.error);
+        assert!(load.warnings.is_empty(), "{:?}", load.warnings);
+
+        let origin = load
+            .apps
+            .iter()
+            .find(|app| app.label == "Brave Origin")
+            .expect("Brave Origin catalog row");
+        assert_eq!(origin.category, "Browsers");
+        assert_eq!(origin.package_name, "brave-origin");
+        assert!(origin.flatpak_id.is_empty());
+        assert_eq!(origin.exec_name, "brave-origin");
+        assert_eq!(origin.source_label(), "native");
+
+        let command = origin.try_command(&root, "install").unwrap();
+        assert_eq!(command[0], "bash");
+        assert!(command[1].ends_with("main.sh"));
+        assert!(command.contains(&"--package".to_owned()));
+        assert!(command.contains(&"brave-origin".to_owned()));
+        assert!(command.contains(&"--exec".to_owned()));
+        assert!(!command.contains(&"--flatpak".to_owned()));
+        assert_eq!(command.last().map(String::as_str), Some("install"));
+
+        let remove = origin.try_command(&root, "remove").unwrap();
+        assert_eq!(remove.last().map(String::as_str), Some("remove"));
+        assert!(remove.contains(&"--package".to_owned()));
+        assert!(!remove.contains(&"--flatpak".to_owned()));
+
+        let flatpak_brave = load
+            .apps
+            .iter()
+            .find(|app| app.label == "Brave Browser")
+            .expect("Brave Browser Flatpak catalog row");
+        assert!(flatpak_brave.package_name.is_empty());
+        assert_eq!(flatpak_brave.flatpak_id, "com.brave.Browser");
+        assert_eq!(flatpak_brave.exec_name, "brave");
+    }
+
     fn empty_dir(label: &str) -> PathBuf {
         let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(

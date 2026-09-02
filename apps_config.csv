@@ -1,5 +1,6 @@
 Category,Label,Package Name,Flatpak ID,Exec Name,Notes
 Browsers,Brave Browser,,com.brave.Browser,brave,
+Browsers,Brave Origin,brave-origin,,brave-origin,Light Privacy-focused browser
 Browsers,Google Chrome,,com.google.Chrome,google-chrome,
 Browsers,Firefox,firefox,,firefox,
 Browsers,Microsoft Edge,,com.microsoft.Edge,microsoft-edge,

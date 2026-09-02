@@ -1,4 +1,5 @@
 mod catalog;
+mod logos;
 mod runner;
 mod system;
 mod validate;
@@ -11,10 +12,9 @@ use std::{
 };
 
 use eframe::egui::{
-    self, Align, Align2, Button, CentralPanel, Color32, ColorImage, Context, FontData,
-    FontDefinitions, FontFamily, FontId, Frame, Grid, Key, Layout, Painter, Panel, Pos2, Rect,
-    RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, TextureHandle, TextureOptions, Ui,
-    Vec2, pos2, vec2,
+    self, Align, Align2, Button, CentralPanel, Color32, Context, FontData, FontDefinitions,
+    FontFamily, FontId, Frame, Grid, Key, Layout, Painter, Panel, Pos2, Rect, RichText, ScrollArea,
+    Sense, Stroke, StrokeKind, TextEdit, TextureHandle, TextureOptions, Ui, Vec2, pos2, vec2,
 };
 
 use catalog::{AdminTask, AppEntry, CatalogLoad, Task, admin_tasks, find_base_dir, load_apps};
@@ -950,130 +950,36 @@ fn install_fonts(ctx: &Context) {
     ctx.set_fonts(fonts);
 }
 
+// App tiles: Chris's PNGs plus the Origin SVG, all compiled in. Missing the
+// checkout's assets folder at runtime does not affect these textures.
 fn load_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
     let mut icons = HashMap::new();
-    for (key, bytes) in [
-        (
-            "audacity",
-            include_bytes!("../assets/icons/audacity.png").as_slice(),
-        ),
-        (
-            "bottles",
-            include_bytes!("../assets/icons/bottles.png").as_slice(),
-        ),
-        (
-            "boxes",
-            include_bytes!("../assets/icons/boxes.png").as_slice(),
-        ),
-        (
-            "brave",
-            include_bytes!("../assets/icons/brave.png").as_slice(),
-        ),
-        (
-            "discord",
-            include_bytes!("../assets/icons/discord.png").as_slice(),
-        ),
-        (
-            "firefox",
-            include_bytes!("../assets/icons/firefox.png").as_slice(),
-        ),
-        (
-            "gimp",
-            include_bytes!("../assets/icons/gimp.png").as_slice(),
-        ),
-        (
-            "google-chrome",
-            include_bytes!("../assets/icons/google-chrome.png").as_slice(),
-        ),
-        (
-            "localsend",
-            include_bytes!("../assets/icons/localsend.png").as_slice(),
-        ),
-        (
-            "lutris",
-            include_bytes!("../assets/icons/lutris.png").as_slice(),
-        ),
-        (
-            "microsoft-edge",
-            include_bytes!("../assets/icons/microsoft-edge.png").as_slice(),
-        ),
-        (
-            "obs-studio",
-            include_bytes!("../assets/icons/obs-studio.png").as_slice(),
-        ),
-        (
-            "onlyoffice",
-            include_bytes!("../assets/icons/onlyoffice.png").as_slice(),
-        ),
-        (
-            "opera",
-            include_bytes!("../assets/icons/opera.png").as_slice(),
-        ),
-        (
-            "protonup-qt",
-            include_bytes!("../assets/icons/protonup-qt.png").as_slice(),
-        ),
-        (
-            "pycharm-community",
-            include_bytes!("../assets/icons/pycharm-community.png").as_slice(),
-        ),
-        (
-            "signal",
-            include_bytes!("../assets/icons/signal.png").as_slice(),
-        ),
-        (
-            "slack",
-            include_bytes!("../assets/icons/slack.png").as_slice(),
-        ),
-        (
-            "steam",
-            include_bytes!("../assets/icons/steam.png").as_slice(),
-        ),
-        (
-            "thunderbird",
-            include_bytes!("../assets/icons/thunderbird.png").as_slice(),
-        ),
-        (
-            "visual-studio-code",
-            include_bytes!("../assets/icons/visual-studio-code.png").as_slice(),
-        ),
-        (
-            "vivaldi",
-            include_bytes!("../assets/icons/vivaldi.png").as_slice(),
-        ),
-        ("vlc", include_bytes!("../assets/icons/vlc.png").as_slice()),
-        ("zen", include_bytes!("../assets/icons/zen.png").as_slice()),
-    ] {
-        if let Ok(image) = image::load_from_memory(bytes) {
-            let rgba = image.to_rgba8();
-            let size = [rgba.width() as usize, rgba.height() as usize];
-            let color_image = ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+    for &(key, bytes) in crate::logos::APP_PNGS {
+        if let Some(color_image) = crate::logos::decode_png(bytes) {
             icons.insert(
                 key,
-                ctx.load_texture(key, color_image, TextureOptions::LINEAR),
+                ctx.load_texture(format!("app-{key}"), color_image, TextureOptions::LINEAR),
             );
         }
+    }
+    if let Some(raster) = crate::logos::rasterize_svg_markup(crate::logos::BRAVE_ORIGIN_SVG, 64) {
+        icons.insert(
+            "brave-origin",
+            ctx.load_texture(
+                "app-brave-origin",
+                crate::logos::color_image_from_raster(&raster),
+                TextureOptions::LINEAR,
+            ),
+        );
     }
     icons
 }
 
 fn load_distro_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
     let mut icons = HashMap::new();
-    for (key, svg) in [
-        (
-            "arch",
-            include_bytes!("../assets/distros/arch.svg").as_slice(),
-        ),
-        (
-            "debian",
-            include_bytes!("../assets/distros/debian.svg").as_slice(),
-        ),
-        (
-            "fedora",
-            include_bytes!("../assets/distros/fedora.svg").as_slice(),
-        ),
-    ] {
-        if let Some(color_image) = rasterize_svg(svg, 64) {
+    for &(key, svg) in crate::logos::DISTRO_SVGS {
+        if let Some(raster) = crate::logos::rasterize_svg_markup(svg, 64) {
+            let color_image = crate::logos::color_image_from_raster(&raster);
             icons.insert(
                 key,
                 ctx.load_texture(format!("distro-{key}"), color_image, TextureOptions::LINEAR),
@@ -1081,22 +987,6 @@ fn load_distro_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
         }
     }
     icons
-}
-
-fn rasterize_svg(svg: &[u8], size: u32) -> Option<ColorImage> {
-    let options = usvg::Options::default();
-    let tree = usvg::Tree::from_data(svg, &options).ok()?;
-    let mut pixmap = tiny_skia::Pixmap::new(size, size)?;
-    let tree_size = tree.size();
-    let scale = (size as f32 / tree_size.width()).min(size as f32 / tree_size.height());
-    let tx = (size as f32 - tree_size.width() * scale) / 2.0;
-    let ty = (size as f32 - tree_size.height() * scale) / 2.0;
-    let transform = tiny_skia::Transform::from_translate(tx, ty).pre_scale(scale, scale);
-    resvg::render(&tree, transform, &mut pixmap.as_mut());
-    Some(ColorImage::from_rgba_unmultiplied(
-        [size as usize, size as usize],
-        pixmap.data(),
-    ))
 }
 
 fn apply_theme(ctx: &Context) {
@@ -1874,7 +1764,7 @@ fn distro_selected(label: &str, package_manager: &str, distro_name: &str) -> boo
 fn app_color(label: &str) -> Color32 {
     match label {
         "Firefox" => Color32::from_rgb(238, 90, 47),
-        "Brave Browser" => Color32::from_rgb(246, 85, 42),
+        "Brave Browser" | "Brave Origin" => Color32::from_rgb(246, 85, 42),
         "Google Chrome" => Color32::from_rgb(66, 133, 244),
         "Microsoft Edge" => Color32::from_rgb(19, 158, 175),
         "Opera" => Color32::from_rgb(218, 38, 55),
@@ -1897,7 +1787,7 @@ fn app_mark(label: &str) -> &str {
         "PyCharm Community" => "PC",
         "Google Chrome" => "C",
         "Microsoft Edge" => "E",
-        "Brave Browser" => "B",
+        "Brave Origin" => "O",
         "Thunderbird" => "T",
         "ProtonUp-Qt" => "P",
         _ => label.get(0..1).unwrap_or("*"),
@@ -1907,6 +1797,7 @@ fn app_mark(label: &str) -> &str {
 fn app_description(label: &str) -> &'static str {
     match label {
         "Brave Browser" => "Privacy-focused browser",
+        "Brave Origin" => "Native Origin browser",
         "Google Chrome" => "The web browser from Google",
         "Firefox" => "Web browser from Mozilla",
         "Microsoft Edge" => "Microsoft's web browser",
@@ -1956,6 +1847,7 @@ fn icon_key(label: &str) -> &'static str {
         "Bottles" | "bottles" => "bottles",
         "Boxes" | "gnome-boxes" => "boxes",
         "Brave Browser" | "brave" => "brave",
+        "Brave Origin" | "brave-origin" => "brave-origin",
         "Discord" | "discord" => "discord",
         "Firefox" | "firefox" => "firefox",
         "GIMP" | "gimp" => "gimp",

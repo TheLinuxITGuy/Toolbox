@@ -5,7 +5,7 @@
 
 A fast Rust desktop app for installing/removing apps and running Linux admin tasks with one click.
 
-![Preview](Screenshot/Screenshot7.png)
+![Preview](Screenshot/Screenshot8.png)
 
 > [!NOTE]
 > #### Supported Distros

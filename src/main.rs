@@ -1065,6 +1065,7 @@ impl ToolboxApp {
             egui::Window::new("Sudo Authentication")
                 .collapsible(false)
                 .resizable(false)
+                .title_bar(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .open(&mut open)
                 .frame(
@@ -1075,6 +1076,13 @@ impl ToolboxApp {
                         .corner_radius(8.0),
                 )
                 .show(ctx, |ui| {
+                    ui.label(
+                        RichText::new("Sudo Authentication")
+                            .font(FontId::proportional(18.0))
+                            .color(palette.modal_text)
+                            .strong(),
+                    );
+                    ui.add_space(8.0);
                     ui.label(
                         RichText::new(format!("Enter your sudo password to {phrase}."))
                             .color(palette.modal_text),

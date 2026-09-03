@@ -227,7 +227,7 @@ fn run_sudo_command(command: &[String], password: &str) -> Result<Output, String
     let Some((program, args)) = command.split_first() else {
         return Err("[ERROR] Empty Flatpak bootstrap command.".to_owned());
     };
-    if program != "sudo" || !args.first().is_some_and(|arg| arg == "-S") {
+    if program != "sudo" || args.first().is_none_or(|arg| arg != "-S") {
         return Err("[ERROR] Flatpak bootstrap must use sudo -S.".to_owned());
     }
 

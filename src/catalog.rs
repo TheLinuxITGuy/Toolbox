@@ -599,6 +599,232 @@ mod tests {
         assert_eq!(flatpak_brave.exec_name, "brave");
     }
 
+    #[test]
+    fn shipped_catalog_keeps_original_rows_and_adds_flathub_popular() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let load = load_apps(&root);
+        assert!(load.error.is_none(), "{:?}", load.error);
+        assert!(load.warnings.is_empty(), "{:?}", load.warnings);
+        assert_eq!(load.apps.len(), 50);
+
+        let original = [
+            "Brave Browser",
+            "Brave Origin",
+            "Google Chrome",
+            "Firefox",
+            "Microsoft Edge",
+            "Opera",
+            "Vivaldi",
+            "Zen",
+            "Discord",
+            "Signal",
+            "Slack",
+            "Thunderbird",
+            "Bottles",
+            "Boxes",
+            "Visual Studio Code",
+            "PyCharm Community",
+            "Lutris",
+            "ProtonUp-Qt",
+            "Steam",
+            "Steam",
+            "Audacity",
+            "GIMP",
+            "mpv",
+            "OBS Studio",
+            "OBS Studio",
+            "VLC",
+            "LibreOffice",
+            "OnlyOffice",
+            "GParted",
+            "htop",
+            "LocalSend",
+        ];
+        for (index, label) in original.iter().enumerate() {
+            assert_eq!(load.apps[index].label, *label, "original row {index}");
+        }
+
+        let additions = [
+            (
+                "Sober",
+                "Gaming",
+                "",
+                "org.vinegarhq.Sober",
+                "sober",
+                "flatpak",
+            ),
+            (
+                "Spotify",
+                "Multimedia",
+                "",
+                "com.spotify.Client",
+                "spotify",
+                "flatpak",
+            ),
+            (
+                "Heroic",
+                "Gaming",
+                "",
+                "com.heroicgameslauncher.hgl",
+                "heroic",
+                "flatpak",
+            ),
+            (
+                "Flatseal",
+                "Utilities",
+                "",
+                "com.github.tchx84.Flatseal",
+                "flatseal",
+                "flatpak",
+            ),
+            (
+                "Telegram",
+                "Communication",
+                "telegram-desktop",
+                "",
+                "telegram-desktop",
+                "native",
+            ),
+            (
+                "Prism Launcher",
+                "Gaming",
+                "",
+                "org.prismlauncher.PrismLauncher",
+                "prismlauncher",
+                "flatpak",
+            ),
+            (
+                "Obsidian",
+                "Office Tools",
+                "",
+                "md.obsidian.Obsidian",
+                "obsidian",
+                "flatpak",
+            ),
+            (
+                "RetroArch",
+                "Gaming",
+                "retroarch",
+                "",
+                "retroarch",
+                "native",
+            ),
+            (
+                "Extension Manager",
+                "Utilities",
+                "",
+                "com.mattjakeman.ExtensionManager",
+                "extension-manager",
+                "flatpak",
+            ),
+            (
+                "Dolphin Emulator",
+                "Gaming",
+                "dolphin-emu",
+                "",
+                "dolphin-emu",
+                "native",
+            ),
+            (
+                "qBittorrent",
+                "Utilities",
+                "qbittorrent",
+                "",
+                "qbittorrent",
+                "native",
+            ),
+            ("PPSSPP", "Gaming", "ppsspp", "", "ppsspp", "native"),
+            (
+                "Gear Lever",
+                "Utilities",
+                "",
+                "it.mijorus.gearlever",
+                "gearlever",
+                "flatpak",
+            ),
+            (
+                "Proton VPN",
+                "Utilities",
+                "",
+                "com.protonvpn.www",
+                "protonvpn-app",
+                "flatpak",
+            ),
+            (
+                "ProtonPlus",
+                "Gaming",
+                "",
+                "com.vysp3r.ProtonPlus",
+                "protonplus",
+                "flatpak",
+            ),
+            (
+                "Bitwarden",
+                "Utilities",
+                "",
+                "com.bitwarden.desktop",
+                "bitwarden",
+                "flatpak",
+            ),
+            (
+                "Stremio",
+                "Multimedia",
+                "",
+                "com.stremio.Stremio",
+                "stremio",
+                "flatpak",
+            ),
+            (
+                "LibreWolf",
+                "Browsers",
+                "",
+                "io.gitlab.librewolf-community",
+                "librewolf",
+                "flatpak",
+            ),
+            (
+                "Mission Center",
+                "Utilities",
+                "",
+                "io.missioncenter.MissionCenter",
+                "missioncenter",
+                "flatpak",
+            ),
+        ];
+        for (offset, (label, category, package, flatpak, exec, source)) in
+            additions.iter().enumerate()
+        {
+            let app = &load.apps[31 + offset];
+            assert_eq!(app.label, *label);
+            assert_eq!(app.category, *category);
+            assert_eq!(app.package_name, *package);
+            assert_eq!(app.flatpak_id, *flatpak);
+            assert_eq!(app.exec_name, *exec);
+            assert_eq!(app.source_label(), *source);
+            AppEntry::from_csv(CsvAppEntry {
+                category: (*category).to_owned(),
+                label: (*label).to_owned(),
+                package_name: (*package).to_owned(),
+                flatpak_id: (*flatpak).to_owned(),
+                exec_name: (*exec).to_owned(),
+                notes: String::new(),
+            })
+            .unwrap_or_else(|error| panic!("{label}: {error}"));
+        }
+
+        assert_eq!(
+            load.apps
+                .iter()
+                .filter(|app| app.label == "Firefox")
+                .count(),
+            1
+        );
+        assert_eq!(
+            load.apps.iter().filter(|app| app.label == "Steam").count(),
+            2
+        );
+    }
+
     fn empty_dir(label: &str) -> PathBuf {
         let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(

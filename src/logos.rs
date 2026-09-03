@@ -1,8 +1,9 @@
 //! Logos compiled into the binary.
 //!
-//! Distro chips and the Brave Origin tile use SVG markup via `include_str!`.
-//! Other app tiles use Chris's original PNGs via `include_bytes!`. Nothing
-//! under `assets/` is read from disk at runtime.
+//! Distro chips, app tiles, and the Brave Origin tile use SVG markup via
+//! `include_str!`. Icons are vendored from dashboard-icons (Apache-2.0) or
+//! Simple Icons (CC0). See `assets/logos/NOTICE`. Nothing under `assets/` is
+//! read from disk at runtime.
 
 use eframe::egui::ColorImage;
 
@@ -14,60 +15,80 @@ pub const DISTRO_SVGS: &[(&str, &str)] = &[
 ];
 
 /// Chris's Brave Origin tile: white outlined lion on a dark rounded square.
-/// Do not reuse the orange Brave Browser PNG.
+/// Do not reuse the orange Brave Browser mark.
 pub const BRAVE_ORIGIN_SVG: &str = include_str!("../assets/logos/brave-origin.svg");
 
-/// Original app tile PNGs. Brave Browser is `brave`; Origin is not in this list.
-pub const APP_PNGS: &[(&str, &[u8])] = &[
-    ("audacity", include_bytes!("../assets/logos/audacity.png")),
-    ("bottles", include_bytes!("../assets/logos/bottles.png")),
-    ("boxes", include_bytes!("../assets/logos/boxes.png")),
-    ("brave", include_bytes!("../assets/logos/brave.png")),
-    ("discord", include_bytes!("../assets/logos/discord.png")),
-    ("firefox", include_bytes!("../assets/logos/firefox.png")),
-    ("gimp", include_bytes!("../assets/logos/gimp.png")),
+/// Colorful dashboard-icons SVGs keyed by dashboardicons slug.
+pub const APP_SVGS: &[(&str, &str)] = &[
+    ("audacity", include_str!("../assets/logos/audacity.svg")),
+    ("bitwarden", include_str!("../assets/logos/bitwarden.svg")),
+    ("brave", include_str!("../assets/logos/brave.svg")),
+    ("discord", include_str!("../assets/logos/discord.svg")),
+    ("firefox", include_str!("../assets/logos/firefox.svg")),
+    ("gimp", include_str!("../assets/logos/gimp.svg")),
     (
         "google-chrome",
-        include_bytes!("../assets/logos/google-chrome.png"),
+        include_str!("../assets/logos/google-chrome.svg"),
     ),
-    ("localsend", include_bytes!("../assets/logos/localsend.png")),
-    ("lutris", include_bytes!("../assets/logos/lutris.png")),
+    (
+        "libreoffice",
+        include_str!("../assets/logos/libreoffice.svg"),
+    ),
+    ("librewolf", include_str!("../assets/logos/librewolf.svg")),
     (
         "microsoft-edge",
-        include_bytes!("../assets/logos/microsoft-edge.png"),
+        include_str!("../assets/logos/microsoft-edge.svg"),
     ),
+    ("obsidian", include_str!("../assets/logos/obsidian.svg")),
+    ("onlyoffice", include_str!("../assets/logos/onlyoffice.svg")),
+    ("opera", include_str!("../assets/logos/opera.svg")),
+    ("proton-vpn", include_str!("../assets/logos/proton-vpn.svg")),
     (
-        "obs-studio",
-        include_bytes!("../assets/logos/obs-studio.png"),
+        "qbittorrent",
+        include_str!("../assets/logos/qbittorrent.svg"),
     ),
-    (
-        "onlyoffice",
-        include_bytes!("../assets/logos/onlyoffice.png"),
-    ),
-    ("opera", include_bytes!("../assets/logos/opera.png")),
-    (
-        "protonup-qt",
-        include_bytes!("../assets/logos/protonup-qt.png"),
-    ),
-    (
-        "pycharm-community",
-        include_bytes!("../assets/logos/pycharm-community.png"),
-    ),
-    ("signal", include_bytes!("../assets/logos/signal.png")),
-    ("slack", include_bytes!("../assets/logos/slack.png")),
-    ("steam", include_bytes!("../assets/logos/steam.png")),
+    ("signal", include_str!("../assets/logos/signal.svg")),
+    ("slack", include_str!("../assets/logos/slack.svg")),
+    ("spotify", include_str!("../assets/logos/spotify.svg")),
+    ("steam", include_str!("../assets/logos/steam.svg")),
+    ("stremio", include_str!("../assets/logos/stremio.svg")),
+    ("telegram", include_str!("../assets/logos/telegram.svg")),
     (
         "thunderbird",
-        include_bytes!("../assets/logos/thunderbird.png"),
+        include_str!("../assets/logos/thunderbird.svg"),
     ),
     (
         "visual-studio-code",
-        include_bytes!("../assets/logos/visual-studio-code.png"),
+        include_str!("../assets/logos/visual-studio-code.svg"),
     ),
-    ("vivaldi", include_bytes!("../assets/logos/vivaldi.png")),
-    ("vlc", include_bytes!("../assets/logos/vlc.png")),
-    ("zen", include_bytes!("../assets/logos/zen.png")),
+    ("vivaldi", include_str!("../assets/logos/vivaldi.svg")),
+    (
+        "zen-browser",
+        include_str!("../assets/logos/zen-browser.svg"),
+    ),
+    (
+        "zen-browser-dark",
+        include_str!("../assets/logos/zen-browser-dark.svg"),
+    ),
 ];
+
+/// Simple Icons monochrome SVGs. Tint with chrome text at paint time.
+pub const MONO_SVGS: &[(&str, &str)] = &[
+    ("heroic", include_str!("../assets/logos/heroic.svg")),
+    ("htop", include_str!("../assets/logos/htop.svg")),
+    ("lutris", include_str!("../assets/logos/lutris.svg")),
+    ("mpv", include_str!("../assets/logos/mpv.svg")),
+    ("obs-studio", include_str!("../assets/logos/obs-studio.svg")),
+    (
+        "pycharm-community",
+        include_str!("../assets/logos/pycharm-community.svg"),
+    ),
+    ("vlc", include_str!("../assets/logos/vlc.svg")),
+];
+
+pub fn is_monochrome_icon(key: &str) -> bool {
+    MONO_SVGS.iter().any(|(slug, _)| *slug == key)
+}
 
 pub struct Raster {
     pub size: [usize; 2],
@@ -99,15 +120,6 @@ pub fn rasterize_svg_markup(svg: &str, size: u32) -> Option<Raster> {
 
 pub fn color_image_from_raster(raster: &Raster) -> ColorImage {
     ColorImage::from_rgba_unmultiplied(raster.size, &raster.rgba)
-}
-
-pub fn decode_png(bytes: &[u8]) -> Option<ColorImage> {
-    let image = image::load_from_memory(bytes).ok()?;
-    let rgba = image.to_rgba8();
-    Some(ColorImage::from_rgba_unmultiplied(
-        [rgba.width() as usize, rgba.height() as usize],
-        rgba.as_raw(),
-    ))
 }
 
 #[cfg(test)]
@@ -156,22 +168,42 @@ mod tests {
     }
 
     #[test]
-    fn app_pngs_decode_without_assets_dir() {
-        assert_eq!(APP_PNGS.len(), 24);
-        let keys: Vec<&str> = APP_PNGS.iter().map(|(key, _)| *key).collect();
+    fn app_svgs_are_embedded_dashboardicons_markup() {
+        let keys: Vec<&str> = APP_SVGS.iter().map(|(key, _)| *key).collect();
         assert!(keys.contains(&"brave"));
+        assert!(keys.contains(&"zen-browser"));
+        assert!(keys.contains(&"zen-browser-dark"));
         assert!(!keys.contains(&"brave-origin"));
-        assert!(!keys.contains(&"htop"));
-        assert!(!keys.contains(&"libreoffice"));
-        assert!(!keys.contains(&"mpv"));
-        for (name, bytes) in APP_PNGS {
-            let image = decode_png(bytes).unwrap_or_else(|| panic!("{name} PNG failed to decode"));
-            assert!(image.width() > 0 && image.height() > 0, "{name}");
+        for (name, svg) in APP_SVGS {
+            assert_markup(name, svg);
+            assert_raster(name, svg);
         }
     }
 
     #[test]
-    fn include_str_and_bytes_match_checkout_files() {
+    fn mono_svgs_are_simple_icons_markup() {
+        let keys: Vec<&str> = MONO_SVGS.iter().map(|(key, _)| *key).collect();
+        for expected in [
+            "vlc",
+            "lutris",
+            "heroic",
+            "obs-studio",
+            "mpv",
+            "htop",
+            "pycharm-community",
+        ] {
+            assert!(keys.contains(&expected), "{expected}");
+        }
+        for (name, svg) in MONO_SVGS {
+            assert_markup(name, svg);
+            assert_raster(name, svg);
+        }
+        assert!(is_monochrome_icon("vlc"));
+        assert!(!is_monochrome_icon("brave"));
+    }
+
+    #[test]
+    fn include_str_matches_checkout_files() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         for (name, embedded) in DISTRO_SVGS {
             let path = root.join("assets/distros").join(format!("{name}.svg"));
@@ -179,11 +211,11 @@ mod tests {
                 .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
             assert_eq!(*embedded, on_disk.as_str(), "{name}");
         }
-        for (name, bytes) in APP_PNGS {
-            let path = root.join("assets/logos").join(format!("{name}.png"));
-            let on_disk = std::fs::read(&path)
+        for (name, embedded) in APP_SVGS.iter().chain(MONO_SVGS.iter()) {
+            let path = root.join("assets/logos").join(format!("{name}.svg"));
+            let on_disk = std::fs::read_to_string(&path)
                 .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
-            assert_eq!(*bytes, on_disk.as_slice(), "{name}");
+            assert_eq!(*embedded, on_disk.as_str(), "{name}");
         }
     }
 
@@ -194,25 +226,101 @@ mod tests {
     }
 
     #[test]
-    fn brave_origin_is_not_the_orange_brave_png() {
-        let brave = APP_PNGS
+    fn app_rasters_are_not_shipped() {
+        let logos = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/logos");
+        let pngs: Vec<_> = std::fs::read_dir(&logos)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("png"))
+            .collect();
+        assert!(
+            pngs.is_empty(),
+            "app tile PNGs must not be shipped: {pngs:?}"
+        );
+        let prod = include_str!("logos.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .expect("logos module");
+        assert!(!prod.contains("APP_PNGS"));
+        assert!(!prod.contains("include_bytes!"));
+        assert!(!prod.contains(".png"));
+    }
+
+    #[test]
+    fn brave_origin_is_not_the_orange_brave_mark() {
+        let brave = APP_SVGS
             .iter()
             .find(|(key, _)| *key == "brave")
-            .map(|(_, bytes)| *bytes)
-            .expect("brave png");
-        assert!(!BRAVE_ORIGIN_SVG.as_bytes().eq(brave));
+            .map(|(_, svg)| *svg)
+            .expect("brave svg");
+        assert_ne!(BRAVE_ORIGIN_SVG, brave);
         assert!(
             !BRAVE_ORIGIN_SVG.to_ascii_lowercase().contains("#fb542b"),
             "Origin SVG must not use the orange Brave fill"
         );
         let origin = rasterize_svg_markup(BRAVE_ORIGIN_SVG, 32).unwrap();
-        let brave_img = decode_png(brave).unwrap();
-        assert_ne!(
-            origin.rgba.len(),
-            0,
-            "Origin SVG raster must produce pixels"
-        );
-        assert!(brave_img.width() > 0);
+        let brave_img = rasterize_svg_markup(brave, 32).unwrap();
+        assert_ne!(origin.rgba, brave_img.rgba);
+    }
+
+    #[test]
+    fn letter_fallback_apps_have_no_invented_icon_files() {
+        let logos = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/logos");
+        for forbidden in [
+            "bottles.svg",
+            "boxes.svg",
+            "protonup-qt.svg",
+            "gparted.svg",
+            "localsend.svg",
+            "sober.svg",
+            "flatseal.svg",
+            "prism-launcher.svg",
+            "retroarch.svg",
+            "extension-manager.svg",
+            "dolphin-emu.svg",
+            "ppsspp.svg",
+            "gear-lever.svg",
+            "protonplus.svg",
+            "mission-center.svg",
+        ] {
+            assert!(
+                !logos.join(forbidden).exists(),
+                "do not invent a dashboardicons file for {forbidden}"
+            );
+        }
+        let keys: Vec<&str> = APP_SVGS
+            .iter()
+            .chain(MONO_SVGS.iter())
+            .map(|(key, _)| *key)
+            .collect();
+        for forbidden in [
+            "bottles",
+            "boxes",
+            "protonup-qt",
+            "gparted",
+            "localsend",
+            "sober",
+            "flatseal",
+            "prism-launcher",
+            "retroarch",
+            "extension-manager",
+            "dolphin-emu",
+            "ppsspp",
+            "gear-lever",
+            "protonplus",
+            "mission-center",
+        ] {
+            assert!(!keys.contains(&forbidden), "{forbidden}");
+        }
+    }
+
+    #[test]
+    fn notice_attributes_vendored_collections() {
+        let notice = include_str!("../assets/logos/NOTICE");
+        assert!(notice.contains("Apache License 2.0"));
+        assert!(notice.contains("dashboard-icons"));
+        assert!(notice.contains("Simple Icons"));
+        assert!(notice.contains("brave-origin.svg"));
     }
 
     #[test]

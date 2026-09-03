@@ -233,6 +233,11 @@ mod tests {
             "htop",
             "brave-origin",
             "brave-origin-bin",
+            "telegram-desktop",
+            "retroarch",
+            "dolphin-emu",
+            "qbittorrent",
+            "ppsspp",
         ] {
             assert!(is_package_name(name), "{name}");
         }
@@ -261,6 +266,20 @@ mod tests {
             "com.obsproject.Studio",
             "org.onlyoffice.desktopeditors",
             "org.localsend.localsend_app",
+            "org.vinegarhq.Sober",
+            "com.spotify.Client",
+            "com.heroicgameslauncher.hgl",
+            "com.github.tchx84.Flatseal",
+            "org.prismlauncher.PrismLauncher",
+            "md.obsidian.Obsidian",
+            "com.mattjakeman.ExtensionManager",
+            "it.mijorus.gearlever",
+            "com.protonvpn.www",
+            "com.vysp3r.ProtonPlus",
+            "com.bitwarden.desktop",
+            "com.stremio.Stremio",
+            "io.gitlab.librewolf-community",
+            "io.missioncenter.MissionCenter",
         ] {
             assert!(is_flatpak_id(id), "{id}");
         }

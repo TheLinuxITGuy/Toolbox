@@ -1,0 +1,54 @@
+App tile icons
+==============
+
+dashboard-icons (Apache License 2.0)
+Copyright the dashboard-icons contributors
+https://github.com/homarr-labs/dashboard-icons
+
+Vendored at build time from:
+https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/svg/{slug}.svg
+
+Files (native dashboardicons.com pages):
+  audacity.svg
+  bitwarden.svg
+  brave.svg
+  discord.svg
+  firefox.svg
+  gimp.svg
+  google-chrome.svg
+  libreoffice.svg
+  librewolf.svg
+  microsoft-edge.svg
+  obsidian.svg
+  onlyoffice.svg
+  opera.svg
+  proton-vpn.svg
+  qbittorrent.svg
+  signal.svg
+  slack.svg
+  spotify.svg
+  steam.svg
+  stremio.svg
+  telegram.svg
+  thunderbird.svg
+  visual-studio-code.svg
+  vivaldi.svg
+  zen-browser.svg
+  zen-browser-dark.svg
+
+Simple Icons (CC0 1.0 Universal)
+https://github.com/simple-icons/simple-icons
+
+Canonical CDN listed by the Toolbox spec (cdn.simpleicons.org). The same
+SVG markup is vendored here so the GUI never hotlinks at runtime:
+  vlc.svg                 <- cdn.simpleicons.org/vlcmediaplayer
+  lutris.svg              <- cdn.simpleicons.org/lutris
+  heroic.svg              <- cdn.simpleicons.org/heroicgameslauncher
+  obs-studio.svg          <- cdn.simpleicons.org/obsstudio
+  mpv.svg                 <- cdn.simpleicons.org/mpv
+  htop.svg                <- cdn.simpleicons.org/htop
+  pycharm-community.svg   <- cdn.simpleicons.org/pycharm
+
+brave-origin.svg is Chris's lion artwork for Brave Origin. It is not a
+dashboard-icons or Simple Icons asset and must not be replaced with the
+orange Brave Browser mark.

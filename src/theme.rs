@@ -63,26 +63,12 @@ impl ThemeMode {
         }
     }
 
-    /// Icon shown on the toggle: sun means "switch to light", moon means "switch to dark".
-    pub fn toggle_icon(self) -> ThemeIcon {
-        match self {
-            Self::Dark => ThemeIcon::Sun,
-            Self::Light => ThemeIcon::Moon,
-        }
-    }
-
     pub fn toggle_tooltip(self) -> &'static str {
         match self {
             Self::Dark => "Switch to light theme",
             Self::Light => "Switch to dark theme",
         }
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ThemeIcon {
-    Sun,
-    Moon,
 }
 
 /// Derived chrome colors for one theme. Brand primaries stay exact hex values;
@@ -137,6 +123,8 @@ pub struct Palette {
     pub badge_flatpak_text: Color32,
     pub modal_fill: Color32,
     pub modal_text: Color32,
+    /// Kept for contrast tests. Cancel is drawn as an outline, not a fill.
+    #[allow(dead_code)]
     pub cancel_fill: Color32,
     pub cancel_text: Color32,
 }
@@ -264,148 +252,104 @@ impl Palette {
         }
     }
 
-    /// Sun in dark mode (switch to light), moon in light mode (switch to dark).
-    /// Stroke-only vectors — no raster, no circular button chrome.
-    pub fn paint_toggle_icon(&self, painter: &Painter, rect: Rect) {
-        match self.mode.toggle_icon() {
-            ThemeIcon::Sun => paint_sun(painter, rect, self.chrome_text),
-            ThemeIcon::Moon => paint_moon(painter, rect, self.chrome_text),
-        }
+    /// Combined sun + right-facing crescent. Same glyph in both themes.
+    pub fn paint_toggle_icon(&self, painter: &Painter, rect: Rect, punch: Color32) {
+        paint_theme_toggle(painter, rect, self.chrome_text, punch);
     }
 }
 
-/// Hollow ring + eight short rays at 45° (stroke only, rounded caps).
-pub fn paint_sun(painter: &Painter, rect: Rect, color: Color32) {
-    let center = rect.center();
-    let size = rect.width().min(rect.height());
-    let stroke_w = (size * 0.09).clamp(1.5, 2.4);
-    let stroke = Stroke::new(stroke_w, color);
-    let ring_r = size * 0.22;
-    painter.circle_stroke(center, ring_r, stroke);
+/// ViewBox 0 0 24 24 geometry for the combined theme glyph.
+const TOGGLE_VIEWBOX: f32 = 24.0;
+const SUN_DISK: (f32, f32, f32) = (12.0, 12.0, 7.8);
+const CRESCENT_A: (f32, f32, f32) = (12.0, 12.4, 5.4);
+const CRESCENT_B: (f32, f32, f32) = (14.0, 10.4, 4.5);
+const RAY_THICKNESS: f32 = 2.0;
+const RAY_LENGTH: f32 = 4.2;
+const RAY_ROUNDING: f32 = 0.15;
 
-    let ray_inner = ring_r + size * 0.11;
-    let ray_outer = size * 0.44;
-    let cap_r = stroke_w * 0.5;
-    for angle in sun_ray_angles() {
-        let dir = vec2(angle.cos(), angle.sin());
-        let start = center + dir * ray_inner;
-        let end = center + dir * ray_outer;
-        painter.line_segment([start, end], stroke);
-        painter.circle_filled(start, cap_r, color);
-        painter.circle_filled(end, cap_r, color);
-    }
-}
-
-/// Waning crescent outline facing right (stroke only, no fill).
-pub fn paint_moon(painter: &Painter, rect: Rect, color: Color32) {
-    let size = rect.width().min(rect.height());
-    let stroke_w = (size * 0.09).clamp(1.5, 2.4);
-    painter.add(Shape::closed_line(
-        crescent_outline(rect),
-        Stroke::new(stroke_w, color),
-    ));
-}
-
+#[cfg(test)]
 fn sun_ray_angles() -> [f32; 8] {
     core::array::from_fn(|i| (i as f32) * std::f32::consts::TAU / 8.0)
 }
 
-fn crescent_outline(rect: Rect) -> Vec<Pos2> {
-    let center = rect.center();
+/// Axis-aligned ray rects in viewBox space (the other four are these rotated 45°).
+fn cardinal_ray_rects() -> [(f32, f32, f32, f32); 4] {
+    [
+        (11.0, 0.0, RAY_THICKNESS, RAY_LENGTH),
+        (11.0, TOGGLE_VIEWBOX - RAY_LENGTH, RAY_THICKNESS, RAY_LENGTH),
+        (0.0, 11.0, RAY_LENGTH, RAY_THICKNESS),
+        (TOGGLE_VIEWBOX - RAY_LENGTH, 11.0, RAY_LENGTH, RAY_THICKNESS),
+    ]
+}
+
+fn map_viewbox(x: f32, y: f32, rect: Rect) -> Pos2 {
     let size = rect.width().min(rect.height());
-    let outer_c = center + vec2(-size * 0.04, 0.0);
-    let outer_r = size * 0.36;
-    let inner_c = center + vec2(size * 0.15, 0.0);
-    let inner_r = size * 0.30;
-    let steps = 28;
-
-    if let Some((top, bot)) = circle_intersections(outer_c, outer_r, inner_c, inner_r) {
-        let mut pts = sample_arc(outer_c, outer_r, top, bot, std::f32::consts::PI, steps);
-        let inner = sample_arc(inner_c, inner_r, bot, top, std::f32::consts::PI, steps);
-        pts.extend(inner.into_iter().skip(1));
-        return pts;
-    }
-
-    fallback_crescent(center, size, steps)
+    let scale = size / TOGGLE_VIEWBOX;
+    let origin = rect.center() - vec2(12.0 * scale, 12.0 * scale);
+    origin + vec2(x * scale, y * scale)
 }
 
-fn fallback_crescent(center: Pos2, size: f32, steps: usize) -> Vec<Pos2> {
-    let outer_c = center + vec2(-size * 0.05, 0.0);
-    let outer_r = size * 0.36;
-    let inner_c = center + vec2(size * 0.16, 0.0);
-    let inner_r = size * 0.30;
-    let mid = std::f32::consts::PI;
-    let span = 1.18_f32;
-    let mut pts = Vec::with_capacity(steps * 2);
-    for i in 0..=steps {
-        let t = i as f32 / steps as f32;
-        let angle = (mid + span) - t * (2.0 * span);
-        pts.push(outer_c + vec2(angle.cos(), angle.sin()) * outer_r);
-    }
-    let top = pts[0];
-    let bot = pts[steps];
-    for i in 1..steps {
-        let t = i as f32 / steps as f32;
-        let angle = lerp_angle((bot - inner_c).angle(), (top - inner_c).angle(), t);
-        pts.push(inner_c + vec2(angle.cos(), angle.sin()) * inner_r);
-    }
-    pts
+fn viewbox_scale(rect: Rect) -> f32 {
+    rect.width().min(rect.height()) / TOGGLE_VIEWBOX
 }
 
-fn circle_intersections(c0: Pos2, r0: f32, c1: Pos2, r1: f32) -> Option<(Pos2, Pos2)> {
-    let delta = c1 - c0;
-    let dist = delta.length();
-    if dist < f32::EPSILON || dist > r0 + r1 || dist < (r0 - r1).abs() {
-        return None;
+fn rotate_around(point: Pos2, origin: Pos2, angle: f32) -> Pos2 {
+    let delta = point - origin;
+    let (sin, cos) = angle.sin_cos();
+    origin + vec2(delta.x * cos - delta.y * sin, delta.x * sin + delta.y * cos)
+}
+
+fn fill_viewbox_rect(
+    painter: &Painter,
+    rect: Rect,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    color: Color32,
+) {
+    let min = map_viewbox(x, y, rect);
+    let max = map_viewbox(x + w, y + h, rect);
+    let rounding = RAY_ROUNDING * viewbox_scale(rect);
+    painter.rect_filled(Rect::from_min_max(min, max), rounding, color);
+}
+
+fn fill_rotated_viewbox_rect(
+    painter: &Painter,
+    rect: Rect,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    color: Color32,
+) {
+    let origin = map_viewbox(12.0, 12.0, rect);
+    let corners = [
+        map_viewbox(x, y, rect),
+        map_viewbox(x + w, y, rect),
+        map_viewbox(x + w, y + h, rect),
+        map_viewbox(x, y + h, rect),
+    ]
+    .map(|point| rotate_around(point, origin, 45.0_f32.to_radians()));
+    painter.add(Shape::convex_polygon(corners.to_vec(), color, Stroke::NONE));
+}
+
+/// Always draws the same filled sun (8 rectangular rays + right-facing crescent cutout).
+/// `punch` is the sidebar/hover fill used to cut the crescent out of the disk.
+pub fn paint_theme_toggle(painter: &Painter, rect: Rect, chrome_text: Color32, punch: Color32) {
+    for (x, y, w, h) in cardinal_ray_rects() {
+        fill_viewbox_rect(painter, rect, x, y, w, h, chrome_text);
+        fill_rotated_viewbox_rect(painter, rect, x, y, w, h, chrome_text);
     }
-    let a = (r0 * r0 - r1 * r1 + dist * dist) / (2.0 * dist);
-    let h = (r0 * r0 - a * a).max(0.0).sqrt();
-    let mid = c0 + delta * (a / dist);
-    let perp = vec2(-delta.y, delta.x) * (h / dist);
-    let p_a = mid + perp;
-    let p_b = mid - perp;
-    if p_a.y <= p_b.y {
-        Some((p_a, p_b))
-    } else {
-        Some((p_b, p_a))
-    }
-}
 
-fn sample_arc(
-    center: Pos2,
-    radius: f32,
-    from: Pos2,
-    to: Pos2,
-    via: f32,
-    steps: usize,
-) -> Vec<Pos2> {
-    let start = (from - center).angle();
-    let end = (to - center).angle();
-    let ccw = wrap_tau(end - start);
-    let cw = wrap_tau(start - end);
-    let via_ccw = wrap_tau(via - start);
-    let (delta, count) = if via_ccw <= ccw + 1.0e-3 {
-        (ccw, steps)
-    } else {
-        (-cw, steps)
-    };
-    (0..=count)
-        .map(|i| {
-            let t = i as f32 / count as f32;
-            let angle = start + delta * t;
-            center + vec2(angle.cos(), angle.sin()) * radius
-        })
-        .collect()
-}
+    let scale = viewbox_scale(rect);
+    let disk = map_viewbox(SUN_DISK.0, SUN_DISK.1, rect);
+    painter.circle_filled(disk, SUN_DISK.2 * scale, chrome_text);
 
-fn wrap_tau(angle: f32) -> f32 {
-    angle.rem_euclid(std::f32::consts::TAU)
-}
-
-fn lerp_angle(from: f32, to: f32, t: f32) -> f32 {
-    let delta =
-        (to - from + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
-    from + delta * t
+    let hole_a = map_viewbox(CRESCENT_A.0, CRESCENT_A.1, rect);
+    painter.circle_filled(hole_a, CRESCENT_A.2 * scale, punch);
+    let hole_b = map_viewbox(CRESCENT_B.0, CRESCENT_B.1, rect);
+    painter.circle_filled(hole_b, CRESCENT_B.2 * scale, chrome_text);
 }
 
 pub fn apply_theme(ctx: &Context, mode: ThemeMode) {
@@ -685,8 +629,8 @@ mod tests {
         assert_eq!(ThemeMode::parse("dark"), Some(ThemeMode::Dark));
         assert_eq!(ThemeMode::parse("LIGHT\n"), Some(ThemeMode::Light));
         assert_eq!(ThemeMode::parse("nope"), None);
-        assert_eq!(ThemeMode::Dark.toggle_icon(), ThemeIcon::Sun);
-        assert_eq!(ThemeMode::Light.toggle_icon(), ThemeIcon::Moon);
+        assert_eq!(ThemeMode::Dark.toggle_tooltip(), "Switch to light theme");
+        assert_eq!(ThemeMode::Light.toggle_tooltip(), "Switch to dark theme");
     }
 
     #[test]
@@ -700,6 +644,10 @@ mod tests {
             !root.join("assets/theme/moon-light-mode.png").exists(),
             "moon PNG must not be shipped"
         );
+        assert!(
+            !root.join("assets/theme").exists(),
+            "assets/theme rasters must not be shipped"
+        );
         let prod_theme = include_str!("theme.rs")
             .split("#[cfg(test)]")
             .next()
@@ -709,49 +657,41 @@ mod tests {
             .next()
             .expect("main module");
         assert!(!prod_theme.contains("include_bytes!"));
+        assert!(!prod_theme.contains("paint_sun"));
+        assert!(!prod_theme.contains("paint_moon"));
+        assert!(!prod_theme.contains("ThemeIcon"));
+        assert!(!prod_theme.contains("fn toggle_icon"));
+        assert!(prod_theme.contains("paint_theme_toggle"));
         assert!(!prod_main.contains("assets/theme/"));
+        assert!(!prod_main.contains("paint_sun"));
+        assert!(!prod_main.contains("paint_moon"));
     }
 
     #[test]
-    fn sun_has_eight_rays_at_45_degrees() {
+    fn theme_toggle_has_eight_rays_at_45_degrees() {
         let angles = sun_ray_angles();
         assert_eq!(angles.len(), 8);
         for (i, angle) in angles.iter().enumerate() {
             let expected = (i as f32) * 45.0_f32.to_radians();
             assert!((angle - expected).abs() < 1.0e-5);
         }
+        assert_eq!(cardinal_ray_rects().len(), 4);
     }
 
     #[test]
-    fn moon_outline_is_a_waning_crescent_facing_right() {
-        let rect = Rect::from_center_size(pos2(40.0, 40.0), vec2(32.0, 32.0));
-        let pts = crescent_outline(rect);
-        assert!(pts.len() >= 20);
-        let min_x = pts.iter().map(|p| p.x).fold(f32::MAX, f32::min);
-        let max_x = pts.iter().map(|p| p.x).fold(f32::MIN, f32::max);
-        let min_y = pts.iter().map(|p| p.y).fold(f32::MAX, f32::min);
-        let max_y = pts.iter().map(|p| p.y).fold(f32::MIN, f32::max);
-        let leftmost = pts
-            .iter()
-            .copied()
-            .min_by(|a, b| a.x.total_cmp(&b.x))
-            .unwrap();
+    fn theme_toggle_crescent_horns_face_right() {
+        assert_eq!(SUN_DISK, (12.0, 12.0, 7.8));
+        assert_eq!(CRESCENT_A, (12.0, 12.4, 5.4));
+        assert_eq!(CRESCENT_B, (14.0, 10.4, 4.5));
         assert!(
-            leftmost.x < rect.center().x,
-            "convex outer arc must sit on the left"
+            CRESCENT_B.0 > CRESCENT_A.0,
+            "subtracted circle must sit to the right so horns face right"
         );
-        assert!(
-            (leftmost.y - rect.center().y).abs() < 3.0,
-            "left bulge should be near the horizontal midline"
-        );
-        assert!(max_x - min_x > 8.0);
-        assert!(max_y - min_y > 12.0);
-        let mid_x = (min_x + max_x) * 0.5;
-        let right_half: Vec<_> = pts.iter().filter(|p| p.x > mid_x).copied().collect();
-        assert!(
-            !right_half.is_empty(),
-            "horns should reach the right half of the icon"
-        );
+        let rect = Rect::from_center_size(pos2(40.0, 40.0), vec2(26.0, 26.0));
+        let hole_a = map_viewbox(CRESCENT_A.0, CRESCENT_A.1, rect);
+        let hole_b = map_viewbox(CRESCENT_B.0, CRESCENT_B.1, rect);
+        assert!(hole_b.x > hole_a.x);
+        assert!(hole_b.x > rect.center().x);
     }
 
     #[test]

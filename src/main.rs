@@ -1151,7 +1151,7 @@ impl ToolboxApp {
                         ui.add_space(8.0);
                         ScrollArea::vertical()
                             .id_salt("sudo_name_list")
-                            .max_height(140.0)
+                            .max_height(240.0)
                             .show(ui, |ui| {
                                 let mut first_group = true;
                                 for (header, names) in [

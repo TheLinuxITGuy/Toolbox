@@ -91,8 +91,9 @@ struct ToolboxApp {
     install_selected: HashSet<usize>,
     remove_selected: HashSet<usize>,
     admin_selected: HashSet<usize>,
-    search: String,
-    category_filter: Option<String>,
+    install_search: String,
+    install_category: Option<String>,
+    remove_search: String,
     distro_name: String,
     package_manager: String,
     log: String,
@@ -153,8 +154,9 @@ impl ToolboxApp {
             install_selected: HashSet::new(),
             remove_selected: HashSet::new(),
             admin_selected: HashSet::new(),
-            search: String::new(),
-            category_filter: None,
+            install_search: String::new(),
+            install_category: None,
+            remove_search: String::new(),
             distro_name,
             package_manager,
             log,
@@ -192,34 +194,58 @@ impl ToolboxApp {
         }
     }
 
-    fn page_selected_count(&self) -> usize {
-        match self.page {
-            Page::Install => self.install_selected.len(),
-            Page::Remove => self.remove_selected.len(),
-            Page::Administration => self.admin_selected.len(),
-            Page::SystemInfo => 0,
+    fn switch_page(&mut self, page: Page) {
+        self.page = page;
+    }
+
+    fn total_selected_count(&self) -> usize {
+        self.install_selected.len() + self.remove_selected.len() + self.admin_selected.len()
+    }
+
+    fn selection_summary(&self) -> String {
+        let installs = self.install_selected.len();
+        let removals = self.remove_selected.len();
+        let admin = self.admin_selected.len();
+        match (installs, removals, admin) {
+            (0, 0, 0) => "0 selected".to_owned(),
+            (installs, 0, 0) => format!("{installs} to install"),
+            (0, removals, 0) => format!("{removals} to remove"),
+            (0, 0, 1) => "1 admin task".to_owned(),
+            (0, 0, admin) => format!("{admin} admin tasks"),
+            (installs, removals, 0) => format!("{installs} install · {removals} remove"),
+            (installs, 0, admin) => format!("{installs} install · {admin} admin"),
+            (0, removals, admin) => format!("{removals} remove · {admin} admin"),
+            (installs, removals, admin) => {
+                format!("{installs} install · {removals} remove · {admin} admin")
+            }
         }
     }
 
-    fn page_selected_names(&self) -> Vec<String> {
-        match self.page {
-            Page::Install => self
-                .install_selected
-                .iter()
-                .filter_map(|index| self.apps.get(*index).map(|entry| entry.label.clone()))
-                .collect(),
-            Page::Remove => self
-                .remove_selected
-                .iter()
-                .filter_map(|index| self.remove_apps.get(*index).map(|app| app.label.clone()))
-                .collect(),
-            Page::Administration => self
-                .admin_selected
-                .iter()
-                .filter_map(|index| self.admin_tasks.get(*index).map(|task| task.label.clone()))
-                .collect(),
-            Page::SystemInfo => Vec::new(),
-        }
+    fn selected_labels(
+        indices: &HashSet<usize>,
+        labels: impl Fn(usize) -> Option<String>,
+    ) -> Vec<String> {
+        let mut names: Vec<String> = indices.iter().copied().filter_map(labels).collect();
+        names.sort();
+        names
+    }
+
+    fn install_selected_names(&self) -> Vec<String> {
+        Self::selected_labels(&self.install_selected, |index| {
+            self.apps.get(index).map(|entry| entry.label.clone())
+        })
+    }
+
+    fn remove_selected_names(&self) -> Vec<String> {
+        Self::selected_labels(&self.remove_selected, |index| {
+            self.remove_apps.get(index).map(|app| app.label.clone())
+        })
+    }
+
+    fn admin_selected_names(&self) -> Vec<String> {
+        Self::selected_labels(&self.admin_selected, |index| {
+            self.admin_tasks.get(index).map(|task| task.label.clone())
+        })
     }
 
     fn remove_includes_toolbox(&self) -> Option<String> {
@@ -231,58 +257,71 @@ impl ToolboxApp {
         })
     }
 
+    fn push_install_tasks(&self, tasks: &mut Vec<Task>, errors: &mut Vec<String>) {
+        let mut indices: Vec<usize> = self.install_selected.iter().copied().collect();
+        indices.sort_unstable();
+        for index in indices {
+            if let Some(entry) = self.apps.get(index) {
+                match entry.try_command(&self.base_dir, "install") {
+                    Ok(command) => tasks.push(Task {
+                        description: format!("Installing {}", entry.label),
+                        command,
+                    }),
+                    Err(error) => errors.push(format!("{}: {error}", entry.label)),
+                }
+            }
+        }
+    }
+
+    fn push_remove_tasks(&self, tasks: &mut Vec<Task>, errors: &mut Vec<String>) {
+        let mut indices: Vec<usize> = self.remove_selected.iter().copied().collect();
+        indices.sort_unstable();
+        for index in indices {
+            if let Some(app) = self.remove_apps.get(index) {
+                match removable_remove_command(&self.base_dir, app) {
+                    Ok(command) => tasks.push(Task {
+                        description: format!("Removing {}", app.label),
+                        command,
+                    }),
+                    Err(error) => errors.push(format!("{}: {error}", app.label)),
+                }
+            }
+        }
+    }
+
+    fn push_admin_tasks(&self, tasks: &mut Vec<Task>, errors: &mut Vec<String>) {
+        let mut indices: Vec<usize> = self.admin_selected.iter().copied().collect();
+        indices.sort_unstable();
+        for index in indices {
+            if let Some(task) = self.admin_tasks.get(index) {
+                match task.try_command(&self.base_dir) {
+                    Ok(command) => tasks.push(Task {
+                        description: format!("Running {}", task.label),
+                        command,
+                    }),
+                    Err(error) => errors.push(format!("{}: {error}", task.label)),
+                }
+            }
+        }
+    }
+
     fn selected_tasks(&self) -> Result<Vec<Task>, Vec<String>> {
         let mut tasks = Vec::new();
         let mut errors = Vec::new();
-
-        match self.page {
-            Page::Install => {
-                for index in &self.install_selected {
-                    if let Some(entry) = self.apps.get(*index) {
-                        match entry.try_command(&self.base_dir, "install") {
-                            Ok(command) => tasks.push(Task {
-                                description: format!("Installing {}", entry.label),
-                                command,
-                            }),
-                            Err(error) => errors.push(format!("{}: {error}", entry.label)),
-                        }
-                    }
-                }
-            }
-            Page::Remove => {
-                for index in &self.remove_selected {
-                    if let Some(app) = self.remove_apps.get(*index) {
-                        match removable_remove_command(&self.base_dir, app) {
-                            Ok(command) => tasks.push(Task {
-                                description: format!("Removing {}", app.label),
-                                command,
-                            }),
-                            Err(error) => errors.push(format!("{}: {error}", app.label)),
-                        }
-                    }
-                }
-            }
-            Page::Administration => {
-                for index in &self.admin_selected {
-                    if let Some(task) = self.admin_tasks.get(*index) {
-                        match task.try_command(&self.base_dir) {
-                            Ok(command) => tasks.push(Task {
-                                description: format!("Running {}", task.label),
-                                command,
-                            }),
-                            Err(error) => errors.push(format!("{}: {error}", task.label)),
-                        }
-                    }
-                }
-            }
-            Page::SystemInfo => {}
-        }
-
+        self.push_install_tasks(&mut tasks, &mut errors);
+        self.push_remove_tasks(&mut tasks, &mut errors);
+        self.push_admin_tasks(&mut tasks, &mut errors);
         if errors.is_empty() {
             Ok(tasks)
         } else {
             Err(errors)
         }
+    }
+
+    fn clear_all_selections(&mut self) {
+        self.install_selected.clear();
+        self.remove_selected.clear();
+        self.admin_selected.clear();
     }
 
     fn select_visible_apps(&mut self, selected: bool) {
@@ -322,13 +361,13 @@ impl ToolboxApp {
     }
 
     fn app_matches_filter(&self, entry: &AppEntry) -> bool {
-        if let Some(category) = &self.category_filter
+        if let Some(category) = &self.install_category
             && &entry.category != category
         {
             return false;
         }
 
-        let needle = self.search.trim().to_lowercase();
+        let needle = self.install_search.trim().to_lowercase();
         if needle.is_empty() {
             return true;
         }
@@ -340,7 +379,7 @@ impl ToolboxApp {
     }
 
     fn removable_matches_filter(&self, app: &RemovableApp) -> bool {
-        let needle = self.search.trim().to_lowercase();
+        let needle = self.remove_search.trim().to_lowercase();
         if needle.is_empty() {
             return true;
         }
@@ -434,6 +473,7 @@ impl ToolboxApp {
         self.is_running = true;
         self.tx = Some(tx.clone());
         self.rx = Some(rx);
+        self.clear_all_selections();
 
         let repaint = ctx.clone();
         thread::spawn(move || {
@@ -491,9 +531,7 @@ impl ToolboxApp {
             Page::SystemInfo,
         ] {
             if nav_button(ui, page, self.page == page, &palette).clicked() {
-                self.page = page;
-                self.category_filter = None;
-                self.search.clear();
+                self.switch_page(page);
                 if page == Page::Remove {
                     let ctx = ui.ctx().clone();
                     self.start_remove_scan(&ctx);
@@ -680,7 +718,7 @@ impl ToolboxApp {
         let palette = self.palette();
         toolbar_frame(&palette).show(ui, |ui| {
             ui.horizontal(|ui| {
-                search_field(ui, &mut self.search, "Search apps...", &palette);
+                search_field(ui, &mut self.install_search, "Search apps...", &palette);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if flat_text_button(ui, "Clear", palette.chrome_subtle, 60.0, &palette)
                         .clicked()
@@ -698,19 +736,19 @@ impl ToolboxApp {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 ui.spacing_mut().item_spacing.y = 6.0;
-                if filter_chip(ui, "All", self.category_filter.is_none(), &palette).clicked() {
-                    self.category_filter = None;
+                if filter_chip(ui, "All", self.install_category.is_none(), &palette).clicked() {
+                    self.install_category = None;
                 }
                 for category in INSTALL_CATEGORIES {
                     if filter_chip(
                         ui,
                         category,
-                        self.category_filter.as_deref() == Some(*category),
+                        self.install_category.as_deref() == Some(*category),
                         &palette,
                     )
                     .clicked()
                     {
-                        self.category_filter = Some((*category).to_owned());
+                        self.install_category = Some((*category).to_owned());
                     }
                 }
             });
@@ -721,7 +759,12 @@ impl ToolboxApp {
         let palette = self.palette();
         toolbar_frame(&palette).show(ui, |ui| {
             ui.horizontal(|ui| {
-                search_field(ui, &mut self.search, "Search installed apps...", &palette);
+                search_field(
+                    ui,
+                    &mut self.remove_search,
+                    "Search installed apps...",
+                    &palette,
+                );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if flat_text_button(ui, "Refresh", palette.chrome_text, 72.0, &palette)
                         .clicked()
@@ -922,23 +965,30 @@ impl ToolboxApp {
             });
     }
 
-    fn cta_caption(&self) -> String {
-        let n = self.page_selected_count();
-        match self.page {
-            Page::Install => format!("Install {n}"),
-            Page::Remove => format!("Remove {n}"),
-            Page::Administration => format!("Run {n}"),
-            Page::SystemInfo => String::new(),
-        }
+    fn cta_caption(&self) -> &'static str {
+        "Run Selected"
     }
 
-    fn modal_action_phrase(&self) -> String {
-        let n = self.page_selected_count();
-        match self.page {
-            Page::Install => format!("install {n} apps"),
-            Page::Remove => format!("remove {n} apps"),
-            Page::Administration => format!("run {n} admin tasks"),
-            Page::SystemInfo => "continue".to_owned(),
+    fn modal_count_line(&self) -> String {
+        let mut parts = Vec::new();
+        let installs = self.install_selected.len();
+        let removals = self.remove_selected.len();
+        let admin = self.admin_selected.len();
+        if installs > 0 {
+            parts.push(format!("install {installs} apps"));
+        }
+        if removals > 0 {
+            parts.push(format!("remove {removals} apps"));
+        }
+        if admin > 0 {
+            parts.push(format!("run {admin} admin tasks"));
+        }
+        match parts.as_slice() {
+            [] => "This will run the selected tasks.".to_owned(),
+            [one] => format!("This will {one}."),
+            [first, second] => format!("This will {first} and {second}."),
+            [first, second, third] => format!("This will {first}, {second}, and {third}."),
+            _ => "This will run the selected tasks.".to_owned(),
         }
     }
 
@@ -947,19 +997,19 @@ impl ToolboxApp {
         if self.page != Page::SystemInfo {
             summary_frame(&palette).show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    let n = self.page_selected_count();
+                    let n = self.total_selected_count();
                     ui.label(
-                        RichText::new(format!("{n} selected"))
+                        RichText::new(self.selection_summary())
                             .color(palette.on_surface)
                             .strong(),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let caption = if self.is_running {
-                            "Running...".to_owned()
+                            "Running..."
                         } else {
                             self.cta_caption()
                         };
-                        if cta_button(ui, &caption, !self.is_running && n > 0, &palette).clicked() {
+                        if cta_button(ui, caption, !self.is_running && n > 0, &palette).clicked() {
                             self.show_password_modal = true;
                         }
                     });
@@ -990,11 +1040,9 @@ impl ToolboxApp {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if ui
                         .add(
-                            Button::new(
-                                RichText::new("Clear Log").color(palette.on_surface_subtle),
-                            )
-                            .fill(palette.surface_hover)
-                            .stroke(Stroke::new(1.0_f32, palette.border)),
+                            Button::new(RichText::new("Clear Log").color(palette.on_surface))
+                                .fill(palette.surface_hover)
+                                .stroke(Stroke::new(1.0_f32, palette.border)),
                         )
                         .clicked()
                     {
@@ -1042,7 +1090,7 @@ impl ToolboxApp {
                 ui.label(
                     RichText::new(self.last_log_line())
                         .font(FontId::monospace(12.0))
-                        .color(palette.log_text),
+                        .color(palette.on_surface),
                 );
             }
         });
@@ -1054,14 +1102,11 @@ impl ToolboxApp {
 
         if self.show_password_modal {
             let mut open = true;
-            let phrase = self.modal_action_phrase();
-            let mut names = self.page_selected_names();
-            names.sort();
-            let toolbox = if self.page == Page::Remove {
-                self.remove_includes_toolbox()
-            } else {
-                None
-            };
+            let count_line = self.modal_count_line();
+            let install_names = self.install_selected_names();
+            let remove_names = self.remove_selected_names();
+            let admin_names = self.admin_selected_names();
+            let toolbox = self.remove_includes_toolbox();
             egui::Window::new("Sudo Authentication")
                 .collapsible(false)
                 .resizable(false)
@@ -1071,7 +1116,7 @@ impl ToolboxApp {
                 .frame(
                     Frame::new()
                         .fill(palette.modal_fill)
-                        .stroke(Stroke::new(1.0_f32, palette.border))
+                        .stroke(Stroke::new(2.0_f32, palette.border))
                         .inner_margin(16.0)
                         .corner_radius(8.0),
                 )
@@ -1084,9 +1129,11 @@ impl ToolboxApp {
                     );
                     ui.add_space(8.0);
                     ui.label(
-                        RichText::new(format!("Enter your sudo password to {phrase}."))
+                        RichText::new("Enter your sudo password to run the selected tasks.")
                             .color(palette.modal_text),
                     );
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(count_line).color(palette.modal_text));
                     if let Some(toolbox) = &toolbox {
                         ui.add_space(6.0);
                         ui.label(
@@ -1097,17 +1144,37 @@ impl ToolboxApp {
                             .strong(),
                         );
                     }
-                    if !names.is_empty() {
+                    let has_names = !install_names.is_empty()
+                        || !remove_names.is_empty()
+                        || !admin_names.is_empty();
+                    if has_names {
                         ui.add_space(8.0);
                         ScrollArea::vertical()
                             .id_salt("sudo_name_list")
-                            .max_height(140.0)
+                            .max_height(240.0)
                             .show(ui, |ui| {
-                                for name in &names {
+                                let mut first_group = true;
+                                for (header, names) in [
+                                    ("Install", &install_names),
+                                    ("Remove", &remove_names),
+                                    ("Administration", &admin_names),
+                                ] {
+                                    if names.is_empty() {
+                                        continue;
+                                    }
+                                    if !first_group {
+                                        ui.add_space(6.0);
+                                    }
+                                    first_group = false;
                                     ui.label(
-                                        RichText::new(format!("• {name}"))
-                                            .color(palette.modal_text),
+                                        RichText::new(header).color(palette.modal_text).strong(),
                                     );
+                                    for name in names {
+                                        ui.label(
+                                            RichText::new(format!("• {name}"))
+                                                .color(palette.modal_text),
+                                        );
+                                    }
                                 }
                             });
                     }
@@ -1208,7 +1275,7 @@ impl eframe::App for ToolboxApp {
             .frame(
                 Frame::new()
                     .fill(palette.background)
-                    .inner_margin(egui::Margin::symmetric(14, 8)),
+                    .inner_margin(egui::Margin::symmetric(16, 16)),
             )
             .show_inside(ui, |ui| match self.page {
                 Page::Install => self.install_page(ui),
@@ -1360,6 +1427,14 @@ fn chip(ui: &mut Ui, label: &str, selected: bool, icon: Option<&TextureHandle>, 
             palette.chip_idle
         },
     );
+    if !selected {
+        ui.painter().rect_stroke(
+            rect,
+            7.0,
+            Stroke::new(1.0_f32, palette.border),
+            StrokeKind::Inside,
+        );
+    }
     distro_mark(
         ui.painter(),
         Rect::from_min_size(rect.min + vec2(10.0, 8.0), vec2(18.0, 18.0)),
@@ -1392,6 +1467,14 @@ fn filter_chip(ui: &mut Ui, label: &str, selected: bool, palette: &Palette) -> e
         Color32::TRANSPARENT
     };
     ui.painter().rect_filled(rect, 5.0, fill);
+    if !selected {
+        ui.painter().rect_stroke(
+            rect,
+            5.0,
+            Stroke::new(1.0_f32, palette.border),
+            StrokeKind::Inside,
+        );
+    }
     ui.painter().text(
         rect.center(),
         Align2::CENTER_CENTER,
@@ -1442,7 +1525,7 @@ fn search_field(ui: &mut Ui, search: &mut String, hint: &str, palette: &Palette)
                 ui.add_sized(
                     [220.0, 32.0],
                     TextEdit::singleline(search)
-                        .hint_text(hint)
+                        .hint_text(RichText::new(hint).color(palette.on_surface))
                         .font(FontId::proportional(13.0))
                         .desired_width(220.0)
                         .text_color(palette.on_surface)
@@ -1522,12 +1605,37 @@ fn log_frame(palette: &Palette) -> Frame {
         .inner_margin(egui::Margin::symmetric(10, 8))
 }
 
+fn card_title_color(palette: &Palette) -> Color32 {
+    match palette.mode {
+        ThemeMode::Dark => palette.on_surface,
+        ThemeMode::Light => palette.chrome_text,
+    }
+}
+
+fn card_detail_color(palette: &Palette) -> Color32 {
+    match palette.mode {
+        ThemeMode::Dark => palette.on_surface_subtle,
+        ThemeMode::Light => palette.chrome_subtle,
+    }
+}
+
 fn paint_row_background(painter: &Painter, rect: Rect, selected: bool, palette: &Palette) {
-    painter.rect_filled(rect, 6.0, palette.tile);
+    let fill = if selected {
+        palette.tile_selected
+    } else {
+        palette.tile
+    };
+    painter.rect_filled(rect, 8.0, fill);
+    painter.rect_stroke(
+        rect,
+        8.0,
+        Stroke::new(1.0_f32, palette.border),
+        StrokeKind::Inside,
+    );
     if selected {
         painter.rect_stroke(
             rect,
-            6.0,
+            8.0,
             Stroke::new(1.5_f32, palette.accent),
             StrokeKind::Inside,
         );
@@ -1589,11 +1697,11 @@ fn paint_app_icon(
         return;
     }
 
-    painter.circle_filled(rect.center(), rect.width() / 2.0, palette.page_icon_fill);
+    painter.circle_filled(rect.center(), rect.width() / 2.0, palette.icon_well);
     painter.circle_stroke(
         rect.center(),
         rect.width() / 2.0,
-        Stroke::new(1.0_f32, palette.border),
+        Stroke::new(1.5_f32, palette.chrome_text),
     );
     painter.text(
         rect.center(),
@@ -1637,7 +1745,7 @@ fn app_card(
         Align2::LEFT_CENTER,
         label,
         FontId::proportional(15.0),
-        palette.chrome_text,
+        card_title_color(palette),
     );
 
     let mut desc_left = text_left;
@@ -1651,14 +1759,14 @@ fn app_card(
     let galley = painter.layout(
         description.to_owned(),
         FontId::proportional(12.0),
-        palette.chrome_subtle,
+        card_detail_color(palette),
         desc_width,
     );
     let desc_pos = pos2(desc_left, rect.min.y + 44.0);
     let clip = Rect::from_min_size(desc_pos, vec2(desc_width, 22.0));
     painter
         .with_clip_rect(clip)
-        .galley(desc_pos, galley, palette.chrome_subtle);
+        .galley(desc_pos, galley, card_detail_color(palette));
 
     response
 }
@@ -1762,7 +1870,13 @@ fn paint_badge(painter: &Painter, center: Pos2, label: &str, palette: &Palette) 
         palette.badge_flatpak_text
     };
     painter.rect_filled(rect, 5.0, fill);
-    painter.rect_stroke(rect, 5.0, Stroke::new(1.0_f32, stroke), StrokeKind::Inside);
+    let stroke_width = if native { 1.0_f32 } else { 1.5_f32 };
+    painter.rect_stroke(
+        rect,
+        5.0,
+        Stroke::new(stroke_width, stroke),
+        StrokeKind::Inside,
+    );
     painter.text(
         rect.center(),
         Align2::CENTER_CENTER,
@@ -2211,6 +2325,65 @@ mod tests {
             .expect("main module")
     }
 
+    fn sample_app(label: &str, package: &str) -> AppEntry {
+        AppEntry {
+            category: "Browsers".to_owned(),
+            label: label.to_owned(),
+            package_name: package.to_owned(),
+            flatpak_id: String::new(),
+            exec_name: package.to_owned(),
+            notes: String::new(),
+        }
+    }
+
+    fn sample_removable(label: &str, detail: &str, is_toolbox: bool) -> RemovableApp {
+        RemovableApp {
+            label: label.to_owned(),
+            source: RemovableSource::Native,
+            detail: detail.to_owned(),
+            exec: Some(detail.to_owned()),
+            is_toolbox,
+        }
+    }
+
+    fn test_app() -> ToolboxApp {
+        ToolboxApp {
+            base_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")),
+            page: Page::Install,
+            apps: vec![sample_app("Firefox", "firefox"), sample_app("VLC", "vlc")],
+            admin_tasks: vec![AdminTask {
+                category: "System".to_owned(),
+                label: "Update System".to_owned(),
+                script: "update-system.sh".to_owned(),
+            }],
+            install_selected: HashSet::new(),
+            remove_selected: HashSet::new(),
+            admin_selected: HashSet::new(),
+            install_search: String::new(),
+            install_category: None,
+            remove_search: String::new(),
+            distro_name: "Debian".to_owned(),
+            package_manager: "apt-get".to_owned(),
+            log: String::new(),
+            password: String::new(),
+            show_password_modal: false,
+            is_running: false,
+            tx: None,
+            rx: None,
+            log_revision: 0,
+            log_expanded: false,
+            icons: HashMap::new(),
+            distro_icons: HashMap::new(),
+            theme: ThemeMode::Dark,
+            remove_apps: vec![
+                sample_removable("htop", "htop", false),
+                sample_removable("Toolbox", "linux-it-guy-toolbox", true),
+            ],
+            remove_scan: RemoveScanState::Ready,
+            remove_scan_rx: None,
+        }
+    }
+
     #[test]
     fn remove_ui_does_not_iterate_catalog_apps() {
         let src = production_main();
@@ -2232,6 +2405,142 @@ mod tests {
             "Remove UI must not iterate self.apps: {remove_fn}"
         );
         assert!(remove_fn.contains("remove_apps") || remove_fn.contains("start_remove_scan"));
+        let scan_fn = src
+            .split("fn start_remove_scan")
+            .nth(1)
+            .and_then(|rest| rest.split("fn drain_remove_scan").next())
+            .expect("start_remove_scan body");
+        assert!(scan_fn.contains("remove_selected.clear()"));
+        assert!(
+            !scan_fn.contains("install_selected.clear()"),
+            "Remove rescan must not clear install selections"
+        );
+        assert!(
+            !scan_fn.contains("admin_selected.clear()"),
+            "Remove rescan must not clear admin selections"
+        );
+        assert!(src.contains("clear_all_selections"));
+        assert!(src.contains("push_install_tasks"));
+        assert!(src.contains("push_remove_tasks"));
+        assert!(src.contains("push_admin_tasks"));
+    }
+
+    #[test]
+    fn combined_task_builder_queues_install_then_remove_then_admin() {
+        let mut app = test_app();
+        app.install_selected.insert(0);
+        app.remove_selected.insert(0);
+        app.admin_selected.insert(0);
+
+        for page in [
+            Page::Install,
+            Page::Remove,
+            Page::Administration,
+            Page::SystemInfo,
+        ] {
+            app.page = page;
+            assert_eq!(app.total_selected_count(), 3);
+            assert_eq!(app.cta_caption(), "Run Selected");
+            assert_eq!(app.selection_summary(), "1 install · 1 remove · 1 admin");
+            assert_eq!(
+                app.modal_count_line(),
+                "This will install 1 apps, remove 1 apps, and run 1 admin tasks."
+            );
+            let tasks = app.selected_tasks().expect("combined tasks");
+            assert_eq!(tasks.len(), 3, "{page:?}");
+            assert_eq!(tasks[0].description, "Installing Firefox");
+            assert_eq!(tasks[1].description, "Removing htop");
+            assert_eq!(tasks[2].description, "Running Update System");
+            assert_eq!(tasks[0].command.last().map(String::as_str), Some("install"));
+            assert_eq!(tasks[1].command.last().map(String::as_str), Some("remove"));
+        }
+    }
+
+    #[test]
+    fn switching_pages_does_not_clear_other_selection() {
+        let mut app = test_app();
+        app.install_selected.insert(0);
+        app.remove_selected.insert(0);
+        app.admin_selected.insert(0);
+        app.install_search = "firefox".to_owned();
+        app.install_category = Some("Browsers".to_owned());
+        app.remove_search = "htop".to_owned();
+
+        app.switch_page(Page::Remove);
+        assert_eq!(app.page, Page::Remove);
+        assert_eq!(app.install_search, "firefox");
+        assert_eq!(app.install_category.as_deref(), Some("Browsers"));
+        assert_eq!(app.remove_search, "htop");
+        assert!(app.install_selected.contains(&0));
+        assert!(app.remove_selected.contains(&0));
+        assert!(app.admin_selected.contains(&0));
+        assert_eq!(app.total_selected_count(), 3);
+
+        app.switch_page(Page::Install);
+        assert_eq!(app.install_search, "firefox");
+        assert_eq!(app.install_category.as_deref(), Some("Browsers"));
+        assert!(app.remove_selected.contains(&0));
+        assert_eq!(app.cta_caption(), "Run Selected");
+
+        app.switch_page(Page::Administration);
+        assert!(app.install_selected.contains(&0));
+        assert!(app.remove_selected.contains(&0));
+        assert!(app.admin_selected.contains(&0));
+        assert_eq!(app.total_selected_count(), 3);
+        assert_eq!(app.selected_tasks().expect("union").len(), 3);
+    }
+
+    #[test]
+    fn clear_on_install_does_not_wipe_remove_selections() {
+        let mut app = test_app();
+        app.page = Page::Install;
+        app.install_selected.insert(0);
+        app.install_selected.insert(1);
+        app.remove_selected.insert(0);
+        app.admin_selected.insert(0);
+
+        app.select_visible_apps(false);
+        assert!(app.install_selected.is_empty());
+        assert!(app.remove_selected.contains(&0));
+        assert!(app.admin_selected.contains(&0));
+        assert_eq!(app.selection_summary(), "1 remove · 1 admin");
+    }
+
+    #[test]
+    fn selection_summary_and_count_line_omit_empty_sides() {
+        let mut app = test_app();
+        assert_eq!(app.selection_summary(), "0 selected");
+        app.install_selected.insert(0);
+        assert_eq!(app.selection_summary(), "1 to install");
+        assert_eq!(app.modal_count_line(), "This will install 1 apps.");
+        app.remove_selected.insert(0);
+        assert_eq!(app.selection_summary(), "1 install · 1 remove");
+        assert_eq!(
+            app.modal_count_line(),
+            "This will install 1 apps and remove 1 apps."
+        );
+        app.install_selected.clear();
+        assert_eq!(app.selection_summary(), "1 to remove");
+        assert_eq!(app.modal_count_line(), "This will remove 1 apps.");
+        app.remove_selected.insert(1);
+        assert!(app.remove_includes_toolbox().is_some());
+        app.remove_selected.clear();
+        app.admin_selected.insert(0);
+        assert_eq!(app.selection_summary(), "1 admin task");
+        assert_eq!(app.modal_count_line(), "This will run 1 admin tasks.");
+    }
+
+    #[test]
+    fn accepting_the_queue_clears_all_three_selection_sets() {
+        let mut app = test_app();
+        app.install_selected.insert(0);
+        app.remove_selected.insert(0);
+        app.admin_selected.insert(0);
+        app.clear_all_selections();
+        assert!(app.install_selected.is_empty());
+        assert!(app.remove_selected.is_empty());
+        assert!(app.admin_selected.is_empty());
+        assert_eq!(app.total_selected_count(), 0);
     }
 
     #[test]

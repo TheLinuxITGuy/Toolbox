@@ -5,10 +5,10 @@
 //! - Accent: `#E9FC12` neon yellow
 //! - Background: `#1A365D` navy
 //!
-//! Dark: navy canvas (`#1A365D`). Category bars and app tiles use the same
-//! navy fill — no separate card color. Pale-blue text, yellow accents/CTAs.
-//! Light: pale-blue canvas (`#CDEDFE`). Category bars and app tiles use the
-//! same pale fill. Navy text, yellow accents/CTAs.
+//! Dark: navy canvas (`#1A365D`). App tiles sit one step above the canvas.
+//! Pale-blue text, yellow accents/CTAs.
+//! Light: pale-blue canvas (`#CDEDFE`). App tiles sit one step above the
+//! canvas. Navy text, yellow accents/CTAs.
 //!
 //! Yellow is never used as body text on pale-blue fills (poor contrast). CTA
 //! labels are navy on yellow. On pale-blue fills, yellow is borders and icons
@@ -81,6 +81,7 @@ pub struct Palette {
     pub chrome_text: Color32,
     pub chrome_subtle: Color32,
     pub tile: Color32,
+    pub tile_selected: Color32,
     pub surface: Color32,
     pub surface_hover: Color32,
     pub on_surface: Color32,
@@ -143,7 +144,8 @@ impl Palette {
             sidebar,
             chrome_text: PALE_SKY,
             chrome_subtle,
-            tile: NAVY,
+            tile: mix(PALE_SKY, NAVY, 0.10),
+            tile_selected: mix(PALE_SKY, NAVY, 0.16),
             surface,
             surface_hover,
             on_surface: NAVY,
@@ -153,7 +155,7 @@ impl Palette {
             log_frame: surface,
             log_inner: mix(NAVY, Color32::BLACK, 0.28),
             log_text: PALE_SKY,
-            border: mix(NAVY, PALE_SKY, 0.32),
+            border: mix(NAVY, PALE_SKY, 0.42),
             accent: ACCENT,
             cta_fill: ACCENT,
             cta_text: NAVY,
@@ -182,7 +184,7 @@ impl Palette {
             badge_native_stroke: ACCENT,
             badge_native_text: PALE_SKY,
             badge_flatpak_fill: NAVY,
-            badge_flatpak_stroke: mix(PALE_SKY, NAVY, 0.20),
+            badge_flatpak_stroke: PALE_SKY,
             badge_flatpak_text: PALE_SKY,
             modal_fill: mix(PALE_SKY, NAVY, 0.06),
             modal_text: NAVY,
@@ -204,7 +206,8 @@ impl Palette {
             sidebar,
             chrome_text: NAVY,
             chrome_subtle,
-            tile: PALE_SKY,
+            tile: mix(PALE_SKY, Color32::WHITE, 0.35),
+            tile_selected: mix(PALE_SKY, NAVY, 0.10),
             surface,
             surface_hover,
             on_surface: PALE_SKY,
@@ -214,14 +217,14 @@ impl Palette {
             log_frame: surface,
             log_inner: mix(NAVY, Color32::BLACK, 0.18),
             log_text: PALE_SKY,
-            border: mix(PALE_SKY, NAVY, 0.26),
+            border: mix(PALE_SKY, NAVY, 0.40),
             accent: ACCENT,
             cta_fill: ACCENT,
             cta_text: NAVY,
             widget_bg: mix(NAVY, PALE_SKY, 0.12),
             widget_hover: mix(NAVY, PALE_SKY, 0.22),
             input_fill: mix(NAVY, PALE_SKY, 0.14),
-            input_border: mix(PALE_SKY, NAVY, 0.28),
+            input_border: mix(PALE_SKY, NAVY, 0.40),
             checkbox_empty: mix(NAVY, PALE_SKY, 0.16),
             checkbox_border: mix(PALE_SKY, NAVY, 0.28),
             checkbox_check: NAVY,
@@ -238,12 +241,12 @@ impl Palette {
             count_badge: PALE_SKY,
             count_badge_text: NAVY,
             page_icon_fill: mix(NAVY, PALE_SKY, 0.12),
-            icon_well: PALE_SKY,
+            icon_well: mix(PALE_SKY, Color32::WHITE, 0.55),
             badge_native_fill: PALE_SKY,
             badge_native_stroke: ACCENT,
             badge_native_text: NAVY,
             badge_flatpak_fill: PALE_SKY,
-            badge_flatpak_stroke: mix(NAVY, PALE_SKY, 0.25),
+            badge_flatpak_stroke: NAVY,
             badge_flatpak_text: NAVY,
             modal_fill: mix(PALE_SKY, Color32::WHITE, 0.35),
             modal_text: NAVY,
@@ -367,7 +370,7 @@ pub fn apply_theme(ctx: &Context, mode: ThemeMode) {
     style.visuals.extreme_bg_color = palette.input_fill;
     style.visuals.faint_bg_color = palette.surface;
     style.visuals.override_text_color = Some(palette.chrome_text);
-    style.visuals.window_stroke = Stroke::new(1.0_f32, palette.border);
+    style.visuals.window_stroke = Stroke::new(2.0_f32, palette.border);
     style.visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, palette.chrome_text);
     style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, palette.border);
     style.visuals.widgets.inactive.bg_fill = palette.widget_bg;
@@ -377,13 +380,13 @@ pub fn apply_theme(ctx: &Context, mode: ThemeMode) {
     style.visuals.widgets.hovered.bg_fill = palette.widget_hover;
     style.visuals.widgets.hovered.weak_bg_fill = palette.widget_hover;
     style.visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, palette.chrome_text);
-    style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, palette.accent);
-    style.visuals.widgets.active.bg_fill = palette.cta_fill;
-    style.visuals.widgets.active.weak_bg_fill = palette.cta_fill;
-    style.visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, palette.cta_text);
-    style.visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, palette.cta_fill);
-    style.visuals.selection.bg_fill = palette.cta_fill;
-    style.visuals.selection.stroke = Stroke::new(1.0_f32, palette.cta_text);
+    style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, palette.border);
+    style.visuals.widgets.active.bg_fill = palette.widget_hover;
+    style.visuals.widgets.active.weak_bg_fill = palette.widget_hover;
+    style.visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, palette.chrome_text);
+    style.visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, palette.border);
+    style.visuals.selection.bg_fill = palette.widget_hover;
+    style.visuals.selection.stroke = Stroke::new(1.0_f32, palette.chrome_text);
     style.visuals.hyperlink_color = palette.chrome_text;
     ctx.set_global_style(style);
 }
@@ -529,10 +532,13 @@ mod tests {
         assert_eq!(palette.chip_selected_text, NAVY);
         assert_eq!(palette.chip_idle, NAVY);
         assert_eq!(palette.chip_idle, palette.background);
-        assert_eq!(palette.tile, NAVY);
-        assert_eq!(palette.tile, palette.background);
+        assert_eq!(palette.tile, mix(PALE_SKY, NAVY, 0.10));
+        assert_ne!(palette.tile, palette.background);
         assert_eq!(palette.toolbar, NAVY);
         assert_eq!(palette.count_badge, NAVY);
+        assert_eq!(palette.border, mix(NAVY, PALE_SKY, 0.42));
+        assert_eq!(palette.badge_flatpak_stroke, PALE_SKY);
+        assert_eq!(palette.badge_flatpak_text, PALE_SKY);
     }
 
     #[test]
@@ -550,10 +556,13 @@ mod tests {
         assert_eq!(palette.chip_selected_text, NAVY);
         assert_eq!(palette.chip_idle, PALE_SKY);
         assert_eq!(palette.chip_idle, palette.background);
-        assert_eq!(palette.tile, PALE_SKY);
-        assert_eq!(palette.tile, palette.background);
+        assert_eq!(palette.tile, mix(PALE_SKY, Color32::WHITE, 0.35));
+        assert_ne!(palette.tile, palette.background);
         assert_eq!(palette.toolbar, PALE_SKY);
         assert_eq!(palette.count_badge, PALE_SKY);
+        assert_eq!(palette.border, mix(PALE_SKY, NAVY, 0.40));
+        assert_eq!(palette.badge_flatpak_stroke, NAVY);
+        assert_eq!(palette.badge_flatpak_text, NAVY);
     }
 
     #[test]
@@ -564,8 +573,12 @@ mod tests {
                 "{:?} chrome text contrast",
                 palette.mode
             );
+            let tile_label = match palette.mode {
+                ThemeMode::Dark => palette.on_surface,
+                ThemeMode::Light => palette.chrome_text,
+            };
             assert!(
-                contrast_ratio(palette.chrome_text, palette.tile) >= 4.5,
+                contrast_ratio(tile_label, palette.tile) >= 4.5,
                 "{:?} tile text contrast",
                 palette.mode
             );
@@ -604,6 +617,57 @@ mod tests {
                 "{:?} cancel button contrast",
                 palette.mode
             );
+            assert!(
+                contrast_ratio(palette.on_surface, palette.log_frame) >= 4.5,
+                "{:?} collapsed log contrast",
+                palette.mode
+            );
+            assert!(
+                contrast_ratio(palette.chip_idle_text, palette.chip_idle) >= 4.5,
+                "{:?} idle chip text contrast",
+                palette.mode
+            );
+            assert_ne!(
+                palette.border, palette.chip_idle,
+                "{:?} idle chips need a visible border",
+                palette.mode
+            );
+            let tile_label = match palette.mode {
+                ThemeMode::Dark => palette.on_surface,
+                ThemeMode::Light => palette.chrome_text,
+            };
+            assert!(
+                contrast_ratio(tile_label, palette.tile) >= 4.5,
+                "{:?} card label on elevated tile",
+                palette.mode
+            );
+            assert!(
+                contrast_ratio(tile_label, palette.tile_selected) >= 4.5,
+                "{:?} card label on selected tile",
+                palette.mode
+            );
+            assert_eq!(tile_label, NAVY);
+            assert!(
+                contrast_ratio(palette.on_surface, palette.surface_hover) >= 4.5,
+                "{:?} Clear Log on surface_hover",
+                palette.mode
+            );
+            assert!(
+                contrast_ratio(palette.on_surface, palette.input_fill) >= 4.5,
+                "{:?} search hint on input_fill",
+                palette.mode
+            );
+            assert!(
+                contrast_ratio(palette.chrome_text, palette.icon_well) >= 3.0,
+                "{:?} letter fallback on icon well",
+                palette.mode
+            );
+            assert_ne!(
+                palette.icon_well, palette.tile,
+                "{:?} icon well must step off the tile",
+                palette.mode
+            );
+            assert_ne!(palette.tile, palette.background);
         }
     }
 
@@ -665,6 +729,16 @@ mod tests {
         assert!(!prod_main.contains("assets/theme/"));
         assert!(!prod_main.contains("paint_sun"));
         assert!(!prod_main.contains("paint_moon"));
+        let apply = include_str!("theme.rs")
+            .split("pub fn apply_theme")
+            .nth(1)
+            .and_then(|rest| rest.split("pub fn config_dir").next())
+            .expect("apply_theme body");
+        assert!(
+            !apply.contains("cta_fill"),
+            "active widgets must not use yellow CTA fill"
+        );
+        assert!(apply.contains("widget_hover"));
     }
 
     #[test]

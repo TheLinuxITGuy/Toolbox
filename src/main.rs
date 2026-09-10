@@ -101,7 +101,7 @@ const INSTALL_CATEGORIES: &[&str] = &[
     "Utilities",
 ];
 const RAIL_WIDTH: f32 = 68.0;
-const CARD_HEIGHT: f32 = 148.0;
+const CARD_HEIGHT: f32 = 164.0;
 const CARD_ICON: f32 = 44.0;
 const CARD_GAP: f32 = 12.0;
 const CARD_RADIUS: f32 = 12.0;
@@ -1267,35 +1267,33 @@ fn theme_toggle_button(ui: &mut Ui, palette: &Palette) -> egui::Response {
 
 fn mode_segment(ui: &mut Ui, mode: AppsMode, palette: &Palette) -> Option<AppsMode> {
     let mut clicked = None;
-    Frame::new()
-        .fill(palette.surface)
-        .stroke(Stroke::new(1.0_f32, palette.border))
-        .corner_radius(18.0)
-        .inner_margin(egui::Margin::symmetric(4, 4))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                if segment_button(ui, "Install", mode == AppsMode::Install, palette).clicked() {
-                    clicked = Some(AppsMode::Install);
-                }
-                if segment_button(ui, "Remove", mode == AppsMode::Remove, palette).clicked() {
-                    clicked = Some(AppsMode::Remove);
-                }
-            });
-        });
+    ui.allocate_ui_with_layout(
+        vec2(196.0, 36.0),
+        Layout::left_to_right(Align::Center),
+        |ui| {
+            Frame::new()
+                .fill(palette.surface)
+                .stroke(Stroke::new(1.0_f32, palette.border))
+                .corner_radius(18.0)
+                .inner_margin(egui::Margin::symmetric(4, 4))
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    if segment_button(ui, "Install", mode == AppsMode::Install, palette).clicked() {
+                        clicked = Some(AppsMode::Install);
+                    }
+                    if segment_button(ui, "Remove", mode == AppsMode::Remove, palette).clicked() {
+                        clicked = Some(AppsMode::Remove);
+                    }
+                });
+        },
+    );
     clicked
 }
 
 fn segment_button(ui: &mut Ui, label: &str, selected: bool, palette: &Palette) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(vec2(88.0, 28.0), Sense::click());
     if selected {
-        ui.painter().rect_filled(rect, 14.0, palette.elevated);
-        ui.painter().rect_stroke(
-            rect,
-            14.0,
-            Stroke::new(1.0_f32, palette.border_strong),
-            StrokeKind::Inside,
-        );
+        ui.painter().rect_filled(rect, 14.0, palette.text);
     } else if response.hovered() {
         ui.painter().rect_filled(rect, 14.0, palette.nav_hover);
     }
@@ -1305,7 +1303,7 @@ fn segment_button(ui: &mut Ui, label: &str, selected: bool, palette: &Palette) -
         label,
         FontId::proportional(13.0),
         if selected {
-            palette.text
+            palette.void
         } else {
             palette.muted
         },
@@ -2196,7 +2194,7 @@ mod tests {
         assert!(src.contains("Review & Run"));
         assert!(src.contains("run_dock"));
         assert_eq!(RAIL_WIDTH, 68.0);
-        assert_eq!(CARD_HEIGHT, 148.0);
+        assert_eq!(CARD_HEIGHT, 164.0);
     }
 
     #[test]

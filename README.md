@@ -5,7 +5,7 @@
 
 A fast Rust desktop app for installing/removing apps and running Linux admin tasks with one click.
 
-![Home](Screenshot/lumen/home.png)
+![Home](Screenshot/readme-home-dark.png)
 
 > [!NOTE]
 > #### Supported Distros
@@ -47,13 +47,11 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 3. On **Recipes**, stage the playbooks you want to run
 4. When the **Run Dock** appears, click **Review & Run**, enter your sudo password, and follow progress in the **Run Drawer** (then Dismiss when you are done)
 
-![Apps](Screenshot/lumen/apps.png)
+![Apps](Screenshot/readme-apps-dark.png)
 
-![Apps with Run Dock](Screenshot/lumen/apps_run_dock.png)
+![Recipes](Screenshot/readme-recipes-dark.png)
 
-![Recipes](Screenshot/lumen/recipes_run_dock.png)
-
-![System](Screenshot/lumen/system.png)
+![System](Screenshot/readme-system-dark.png)
 
 ## 🔧 Requirements
 

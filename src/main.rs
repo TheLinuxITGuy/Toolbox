@@ -6,16 +6,17 @@ mod theme;
 mod validate;
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     path::PathBuf,
     sync::mpsc::{self, Receiver, Sender},
     thread,
 };
 
 use eframe::egui::{
-    self, Align, Align2, Button, CentralPanel, Color32, Context, FontData, FontDefinitions,
-    FontFamily, FontId, Frame, Grid, Key, Layout, Painter, Panel, Pos2, Rect, RichText, ScrollArea,
-    Sense, Stroke, StrokeKind, TextEdit, TextureHandle, TextureOptions, Ui, Vec2, pos2, vec2,
+    self, Align, Align2, Area, Button, CentralPanel, Color32, Context, FontData, FontDefinitions,
+    FontFamily, FontId, Frame, Grid, Id, Key, Layout, Order, Painter, Panel, Pos2, Rect, RichText,
+    ScrollArea, Sense, Stroke, StrokeKind, TextEdit, TextureHandle, TextureOptions, Ui, Vec2, pos2,
+    vec2,
 };
 
 use catalog::{AdminTask, AppEntry, CatalogLoad, Task, admin_tasks, find_base_dir, load_apps};
@@ -30,8 +31,8 @@ use validate::{is_exec_name, is_label, zeroize_string};
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1180.0, 800.0])
-            .with_min_inner_size([940.0, 660.0])
+            .with_inner_size([1280.0, 840.0])
+            .with_min_inner_size([960.0, 680.0])
             .with_maximized(true),
         ..Default::default()
     };
@@ -45,21 +46,27 @@ fn main() -> eframe::Result {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Page {
-    Install,
-    Remove,
-    Administration,
-    SystemInfo,
+    Home,
+    Apps,
+    Recipes,
+    System,
 }
 
 impl Page {
     fn title(self) -> &'static str {
         match self {
-            Page::Install => "Install",
-            Page::Remove => "Remove",
-            Page::Administration => "Administration",
-            Page::SystemInfo => "System Info",
+            Page::Home => "Home",
+            Page::Apps => "Apps",
+            Page::Recipes => "Recipes",
+            Page::System => "System",
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AppsMode {
+    Install,
+    Remove,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -68,6 +75,20 @@ enum RemoveScanState {
     Scanning,
     Ready,
     Failed(String),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TaskStatus {
+    Queued,
+    Running,
+    Success,
+    Failed,
+}
+
+#[derive(Clone, Debug)]
+struct RunItem {
+    description: String,
+    status: TaskStatus,
 }
 
 const INSTALL_CATEGORIES: &[&str] = &[
@@ -79,13 +100,21 @@ const INSTALL_CATEGORIES: &[&str] = &[
     "Office Tools",
     "Utilities",
 ];
-const CARD_HEIGHT: f32 = 88.0;
-const CARD_ICON: f32 = 40.0;
+const RAIL_WIDTH: f32 = 68.0;
+const CARD_HEIGHT: f32 = 164.0;
+const CARD_ICON: f32 = 44.0;
 const CARD_GAP: f32 = 12.0;
+const CARD_RADIUS: f32 = 12.0;
+const CHECK_SIZE: f32 = 22.0;
+const SEARCH_HEIGHT: f32 = 44.0;
+const DOCK_MIN_WIDTH: f32 = 420.0;
+const DOCK_RADIUS: f32 = 20.0;
+const CONTENT_TWO_COL: f32 = 720.0;
 
 struct ToolboxApp {
     base_dir: PathBuf,
     page: Page,
+    apps_mode: AppsMode,
     apps: Vec<AppEntry>,
     admin_tasks: Vec<AdminTask>,
     install_selected: HashSet<usize>,
@@ -103,9 +132,9 @@ struct ToolboxApp {
     tx: Option<Sender<RunnerMessage>>,
     rx: Option<Receiver<RunnerMessage>>,
     log_revision: u64,
-    log_expanded: bool,
+    run_drawer_open: bool,
+    run_items: Vec<RunItem>,
     icons: HashMap<&'static str, TextureHandle>,
-    distro_icons: HashMap<&'static str, TextureHandle>,
     theme: ThemeMode,
     remove_apps: Vec<RemovableApp>,
     remove_scan: RemoveScanState,
@@ -118,7 +147,6 @@ impl ToolboxApp {
         let theme = theme::load_theme_mode();
         theme::apply_theme(&cc.egui_ctx, theme);
         let icons = load_icons(&cc.egui_ctx);
-        let distro_icons = load_distro_icons(&cc.egui_ctx);
 
         let discovery = find_base_dir();
         let catalog = if discovery.found {
@@ -148,7 +176,8 @@ impl ToolboxApp {
 
         Self {
             base_dir,
-            page: Page::Install,
+            page: Page::Apps,
+            apps_mode: AppsMode::Install,
             apps: catalog.apps,
             admin_tasks: admin_tasks(),
             install_selected: HashSet::new(),
@@ -166,9 +195,9 @@ impl ToolboxApp {
             tx: None,
             rx: None,
             log_revision: 0,
-            log_expanded: false,
+            run_drawer_open: false,
+            run_items: Vec::new(),
             icons,
-            distro_icons,
             theme,
             remove_apps: Vec::new(),
             remove_scan: RemoveScanState::Idle,
@@ -198,27 +227,19 @@ impl ToolboxApp {
         self.page = page;
     }
 
-    fn total_selected_count(&self) -> usize {
-        self.install_selected.len() + self.remove_selected.len() + self.admin_selected.len()
+    fn staged_count(&self, mode: AppsMode) -> usize {
+        match mode {
+            AppsMode::Install => self.install_selected.len(),
+            AppsMode::Remove => self.remove_selected.len(),
+        }
     }
 
-    fn selection_summary(&self) -> String {
-        let installs = self.install_selected.len();
-        let removals = self.remove_selected.len();
-        let admin = self.admin_selected.len();
-        match (installs, removals, admin) {
-            (0, 0, 0) => "0 selected".to_owned(),
-            (installs, 0, 0) => format!("{installs} to install"),
-            (0, removals, 0) => format!("{removals} to remove"),
-            (0, 0, 1) => "1 admin task".to_owned(),
-            (0, 0, admin) => format!("{admin} admin tasks"),
-            (installs, removals, 0) => format!("{installs} install · {removals} remove"),
-            (installs, 0, admin) => format!("{installs} install · {admin} admin"),
-            (0, removals, admin) => format!("{removals} remove · {admin} admin"),
-            (installs, removals, admin) => {
-                format!("{installs} install · {removals} remove · {admin} admin")
-            }
-        }
+    fn dock_visible(&self) -> bool {
+        self.page == Page::Apps && self.staged_count(self.apps_mode) > 0 && !self.is_running
+    }
+
+    fn selection_locked(&self) -> bool {
+        self.is_running
     }
 
     fn selected_labels(
@@ -242,10 +263,11 @@ impl ToolboxApp {
         })
     }
 
-    fn admin_selected_names(&self) -> Vec<String> {
-        Self::selected_labels(&self.admin_selected, |index| {
-            self.admin_tasks.get(index).map(|task| task.label.clone())
-        })
+    fn active_selected_names(&self) -> Vec<String> {
+        match self.apps_mode {
+            AppsMode::Install => self.install_selected_names(),
+            AppsMode::Remove => self.remove_selected_names(),
+        }
     }
 
     fn remove_includes_toolbox(&self) -> Option<String> {
@@ -308,9 +330,13 @@ impl ToolboxApp {
     fn selected_tasks(&self) -> Result<Vec<Task>, Vec<String>> {
         let mut tasks = Vec::new();
         let mut errors = Vec::new();
-        self.push_install_tasks(&mut tasks, &mut errors);
-        self.push_remove_tasks(&mut tasks, &mut errors);
-        self.push_admin_tasks(&mut tasks, &mut errors);
+        match self.apps_mode {
+            AppsMode::Install => self.push_install_tasks(&mut tasks, &mut errors),
+            AppsMode::Remove => self.push_remove_tasks(&mut tasks, &mut errors),
+        }
+        if self.page == Page::Recipes {
+            self.push_admin_tasks(&mut tasks, &mut errors);
+        }
         if errors.is_empty() {
             Ok(tasks)
         } else {
@@ -318,45 +344,17 @@ impl ToolboxApp {
         }
     }
 
+    #[allow(dead_code)]
     fn clear_all_selections(&mut self) {
         self.install_selected.clear();
         self.remove_selected.clear();
         self.admin_selected.clear();
     }
 
-    fn select_visible_apps(&mut self, selected: bool) {
-        match self.page {
-            Page::Install => {
-                let visible: Vec<usize> = self
-                    .apps
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, entry)| self.app_matches_filter(entry).then_some(index))
-                    .collect();
-                if selected {
-                    self.install_selected.extend(visible);
-                } else {
-                    for index in visible {
-                        self.install_selected.remove(&index);
-                    }
-                }
-            }
-            Page::Remove => {
-                let visible: Vec<usize> = self
-                    .remove_apps
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, app)| self.removable_matches_filter(app).then_some(index))
-                    .collect();
-                if selected {
-                    self.remove_selected.extend(visible);
-                } else {
-                    for index in visible {
-                        self.remove_selected.remove(&index);
-                    }
-                }
-            }
-            _ => {}
+    fn clear_active_mode_selections(&mut self) {
+        match self.apps_mode {
+            AppsMode::Install => self.install_selected.clear(),
+            AppsMode::Remove => self.remove_selected.clear(),
         }
     }
 
@@ -437,12 +435,28 @@ impl ToolboxApp {
         self.log_revision = self.log_revision.saturating_add(1);
     }
 
-    fn last_log_line(&self) -> &str {
-        self.log
-            .lines()
-            .rev()
-            .find(|line| !line.trim().is_empty())
-            .unwrap_or(self.log.as_str())
+    fn apply_log_to_run_items(&mut self, line: &str) {
+        if let Some(description) = line.strip_prefix("[INFO] Starting: ") {
+            self.set_run_status(description, TaskStatus::Running);
+        } else if let Some(rest) = line.strip_prefix("[SUCCESS] ") {
+            if let Some(description) = rest.strip_suffix(" completed successfully.") {
+                self.set_run_status(description, TaskStatus::Success);
+            }
+        } else if let Some(rest) = line.strip_prefix("[ERROR] ")
+            && let Some(description) = rest.split(" failed").next()
+        {
+            self.set_run_status(description, TaskStatus::Failed);
+        }
+    }
+
+    fn set_run_status(&mut self, description: &str, status: TaskStatus) {
+        if let Some(item) = self
+            .run_items
+            .iter_mut()
+            .find(|item| item.description == description)
+        {
+            item.status = status;
+        }
     }
 
     fn run_selected(&mut self, ctx: &Context) {
@@ -469,11 +483,17 @@ impl ToolboxApp {
         let password = std::mem::take(&mut self.password);
         self.log = format!("Queued {} task(s)...", tasks.len());
         self.log_revision = self.log_revision.saturating_add(1);
-        self.log_expanded = true;
+        self.run_items = tasks
+            .iter()
+            .map(|task| RunItem {
+                description: task.description.clone(),
+                status: TaskStatus::Queued,
+            })
+            .collect();
+        self.run_drawer_open = true;
         self.is_running = true;
         self.tx = Some(tx.clone());
         self.rx = Some(rx);
-        self.clear_all_selections();
 
         let repaint = ctx.clone();
         thread::spawn(move || {
@@ -484,20 +504,24 @@ impl ToolboxApp {
 
     fn drain_runner_messages(&mut self) {
         let mut done = false;
+        let mut lines = Vec::new();
         if let Some(rx) = &self.rx {
             while let Ok(message) = rx.try_recv() {
                 match message {
-                    RunnerMessage::Log(line) => {
-                        if self.log == "Process logs will appear here..." {
-                            self.log.clear();
-                        }
-                        self.log.push('\n');
-                        self.log.push_str(&strip_ansi(&line));
-                        self.log_revision = self.log_revision.saturating_add(1);
-                    }
+                    RunnerMessage::Log(line) => lines.push(strip_ansi(&line)),
                     RunnerMessage::Done => done = true,
                 }
             }
+        }
+
+        for line in lines {
+            if self.log == "Process logs will appear here..." {
+                self.log.clear();
+            }
+            self.log.push('\n');
+            self.log.push_str(&line);
+            self.log_revision = self.log_revision.saturating_add(1);
+            self.apply_log_to_run_items(&line);
         }
 
         if done {
@@ -510,163 +534,153 @@ impl ToolboxApp {
         }
     }
 
-    fn sidebar(&mut self, ui: &mut Ui) {
+    fn rail(&mut self, ui: &mut Ui) {
         let palette = self.palette();
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            toolbox_icon(ui, 26.0, &palette);
-            ui.label(
-                RichText::new("Toolbox")
-                    .font(FontId::proportional(17.0))
-                    .color(palette.chrome_text)
-                    .strong(),
-            );
-        });
-        ui.add_space(24.0);
+        ui.vertical_centered(|ui| {
+            ui.add_space(10.0);
+            toolbox_icon(ui, 22.0, &palette);
+            ui.add_space(18.0);
 
-        for page in [
-            Page::Install,
-            Page::Remove,
-            Page::Administration,
-            Page::SystemInfo,
-        ] {
-            if nav_button(ui, page, self.page == page, &palette).clicked() {
-                self.switch_page(page);
-                if page == Page::Remove {
-                    let ctx = ui.ctx().clone();
-                    self.start_remove_scan(&ctx);
+            for page in [Page::Home, Page::Apps, Page::Recipes, Page::System] {
+                if rail_button(ui, page, self.page == page, &palette).clicked() {
+                    self.switch_page(page);
+                    if page == Page::Apps && self.apps_mode == AppsMode::Remove {
+                        let ctx = ui.ctx().clone();
+                        self.start_remove_scan(&ctx);
+                    }
                 }
+                ui.add_space(8.0);
             }
-            ui.add_space(4.0);
-        }
+        });
 
-        ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
-            ui.add_space(12.0);
-            let about = nav_aux_button(ui, "About", "i", &palette);
-            if about.clicked() {
-                self.log.push_str("\n[INFO] The Linux IT Guy Toolbox");
-                self.log_revision = self.log_revision.saturating_add(1);
-            }
-            ui.add_space(4.0);
+        ui.with_layout(Layout::bottom_up(Align::Center), |ui| {
+            ui.add_space(14.0);
             if theme_toggle_button(ui, &palette).clicked() {
                 let ctx = ui.ctx().clone();
                 self.toggle_theme(&ctx);
             }
-            ui.add_space(20.0);
-            ui.label(
-                RichText::new(format!("Package manager: {}", self.package_manager))
-                    .color(palette.chrome_subtle),
-            );
-            ui.label(
-                RichText::new(&self.distro_name)
-                    .color(palette.chrome_text)
-                    .strong(),
-            );
         });
     }
 
-    fn header(&mut self, ui: &mut Ui) {
-        let palette = self.palette();
-        ui.set_min_height(76.0);
-        ui.horizontal(|ui| {
-            page_icon(ui, self.page, 46.0, true, &palette);
-            ui.add_space(8.0);
-            ui.vertical(|ui| {
-                ui.label(
-                    RichText::new(self.page.title())
-                        .font(FontId::proportional(25.0))
-                        .color(palette.chrome_text)
-                        .strong(),
-                );
-                ui.label(RichText::new(page_subtitle(self.page)).color(palette.chrome_subtle));
-            });
+    fn apps_page(&mut self, ui: &mut Ui) {
+        self.apps_header(ui);
+        ui.add_space(16.0);
+        match self.apps_mode {
+            AppsMode::Install => self.install_page(ui),
+            AppsMode::Remove => self.remove_page(ui),
+        }
+    }
 
+    fn apps_header(&mut self, ui: &mut Ui) {
+        let palette = self.palette();
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new("Apps")
+                    .font(FontId::proportional(26.0))
+                    .color(palette.text)
+                    .strong(),
+            );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                for label in ["Fedora", "Debian", "Arch"] {
-                    let selected = distro_selected(label, &self.package_manager, &self.distro_name);
-                    chip(
-                        ui,
-                        label,
-                        selected,
-                        self.distro_icons.get(distro_key(label)),
-                        &palette,
-                    );
+                if let Some(mode) = mode_segment(ui, self.apps_mode, &palette) {
+                    self.apps_mode = mode;
+                    if mode == AppsMode::Remove {
+                        let ctx = ui.ctx().clone();
+                        self.start_remove_scan(&ctx);
+                    }
                 }
-                ui.add_space(8.0);
-                ui.label(
-                    RichText::new("Supported Distros:")
-                        .color(palette.chrome_subtle)
-                        .strong(),
-                );
             });
         });
+        ui.add_space(16.0);
+
+        let search = match self.apps_mode {
+            AppsMode::Install => &mut self.install_search,
+            AppsMode::Remove => &mut self.remove_search,
+        };
+        let hint = match self.apps_mode {
+            AppsMode::Install => "Search apps...",
+            AppsMode::Remove => "Search installed apps...",
+        };
+        search_field(ui, search, hint, &palette);
+
+        if self.apps_mode == AppsMode::Install {
+            ui.add_space(12.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                ui.spacing_mut().item_spacing.y = 8.0;
+                if filter_chip(ui, "All", self.install_category.is_none(), &palette).clicked() {
+                    self.install_category = None;
+                }
+                for category in INSTALL_CATEGORIES {
+                    if filter_chip(
+                        ui,
+                        category,
+                        self.install_category.as_deref() == Some(*category),
+                        &palette,
+                    )
+                    .clicked()
+                    {
+                        self.install_category = Some((*category).to_owned());
+                    }
+                }
+            });
+        }
     }
 
     fn install_page(&mut self, ui: &mut Ui) {
-        self.install_toolbar(ui);
-        ui.add_space(10.0);
-
-        let mut categories: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-        for (index, entry) in self.apps.iter().enumerate() {
-            if self.app_matches_filter(entry) {
-                categories
-                    .entry(entry.category.clone())
-                    .or_default()
-                    .push(index);
-            }
-        }
-
+        let visible: Vec<usize> = self
+            .apps
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| self.app_matches_filter(entry).then_some(index))
+            .collect();
         ScrollArea::vertical()
             .id_salt("install_cards")
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 let columns = card_columns(ui);
-                for (category, indexes) in categories {
-                    section_header(ui, &category, indexes.len(), &self.palette());
-                    self.card_rows(ui, columns, indexes.len(), |app, ui, index, width| {
-                        app.install_tile(ui, indexes[index], width);
-                    });
-                    ui.add_space(10.0);
-                }
+                self.card_rows(ui, columns, visible.len(), |app, ui, index, width| {
+                    app.install_tile(ui, visible[index], width);
+                });
             });
     }
 
     fn remove_page(&mut self, ui: &mut Ui) {
-        self.remove_toolbar(ui);
-        ui.add_space(10.0);
-
         match &self.remove_scan {
             RemoveScanState::Idle | RemoveScanState::Scanning => {
-                ui.horizontal(|ui| {
+                centered_status(ui, |ui| {
                     ui.spinner();
+                    ui.add_space(8.0);
                     ui.label(
-                        RichText::new("Scanning installed apps...")
-                            .color(self.palette().chrome_subtle),
+                        RichText::new("Scanning installed apps...").color(self.palette().muted),
                     );
                 });
             }
             RemoveScanState::Failed(error) => {
                 let error = error.clone();
-                ui.label(
-                    RichText::new(format!("Remove scan failed: {error}"))
-                        .color(self.palette().chrome_text),
-                );
-                ui.add_space(8.0);
-                if cta_button(ui, "Retry", true, &self.palette()).clicked() {
-                    let ctx = ui.ctx().clone();
-                    self.start_remove_scan(&ctx);
-                }
+                centered_status(ui, |ui| {
+                    ui.label(
+                        RichText::new(format!("Remove scan failed: {error}"))
+                            .color(self.palette().text),
+                    );
+                    ui.add_space(12.0);
+                    if cta_button(ui, "Retry", true, &self.palette()).clicked() {
+                        let ctx = ui.ctx().clone();
+                        self.start_remove_scan(&ctx);
+                    }
+                });
             }
             RemoveScanState::Ready if self.remove_apps.is_empty() => {
-                ui.label(
-                    RichText::new("No removable apps found on this system.")
-                        .color(self.palette().chrome_text),
-                );
-                ui.add_space(8.0);
-                if cta_button(ui, "Refresh", true, &self.palette()).clicked() {
-                    let ctx = ui.ctx().clone();
-                    self.start_remove_scan(&ctx);
-                }
+                centered_status(ui, |ui| {
+                    ui.label(
+                        RichText::new("No removable apps found on this system.")
+                            .color(self.palette().text),
+                    );
+                    ui.add_space(12.0);
+                    if cta_button(ui, "Refresh", true, &self.palette()).clicked() {
+                        let ctx = ui.ctx().clone();
+                        self.start_remove_scan(&ctx);
+                    }
+                });
             }
             RemoveScanState::Ready => {
                 let visible: Vec<usize> = self
@@ -710,81 +724,8 @@ impl ToolboxApp {
                     ui.allocate_exact_size(vec2(width, 1.0), Sense::hover());
                 }
             });
-            ui.add_space(6.0);
+            ui.add_space(CARD_GAP);
         }
-    }
-
-    fn install_toolbar(&mut self, ui: &mut Ui) {
-        let palette = self.palette();
-        toolbar_frame(&palette).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                search_field(ui, &mut self.install_search, "Search apps...", &palette);
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if flat_text_button(ui, "Clear", palette.chrome_subtle, 60.0, &palette)
-                        .clicked()
-                    {
-                        self.select_visible_apps(false);
-                    }
-                    if flat_text_button(ui, "Select All", palette.chrome_text, 92.0, &palette)
-                        .clicked()
-                    {
-                        self.select_visible_apps(true);
-                    }
-                });
-            });
-            ui.add_space(6.0);
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
-                ui.spacing_mut().item_spacing.y = 6.0;
-                if filter_chip(ui, "All", self.install_category.is_none(), &palette).clicked() {
-                    self.install_category = None;
-                }
-                for category in INSTALL_CATEGORIES {
-                    if filter_chip(
-                        ui,
-                        category,
-                        self.install_category.as_deref() == Some(*category),
-                        &palette,
-                    )
-                    .clicked()
-                    {
-                        self.install_category = Some((*category).to_owned());
-                    }
-                }
-            });
-        });
-    }
-
-    fn remove_toolbar(&mut self, ui: &mut Ui) {
-        let palette = self.palette();
-        toolbar_frame(&palette).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                search_field(
-                    ui,
-                    &mut self.remove_search,
-                    "Search installed apps...",
-                    &palette,
-                );
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if flat_text_button(ui, "Refresh", palette.chrome_text, 72.0, &palette)
-                        .clicked()
-                    {
-                        let ctx = ui.ctx().clone();
-                        self.start_remove_scan(&ctx);
-                    }
-                    if flat_text_button(ui, "Clear", palette.chrome_subtle, 60.0, &palette)
-                        .clicked()
-                    {
-                        self.select_visible_apps(false);
-                    }
-                    if flat_text_button(ui, "Select All", palette.chrome_text, 92.0, &palette)
-                        .clicked()
-                    {
-                        self.select_visible_apps(true);
-                    }
-                });
-            });
-        });
     }
 
     fn install_tile(&mut self, ui: &mut Ui, index: usize, width: f32) {
@@ -805,6 +746,7 @@ impl ToolboxApp {
         let icon = self.icon_for(&queries);
         let selected = self.install_selected.contains(&index);
         let palette = self.palette();
+        let locked = self.selection_locked();
         if app_card(
             ui,
             width,
@@ -816,6 +758,7 @@ impl ToolboxApp {
             &palette,
         )
         .clicked()
+            && !locked
         {
             if selected {
                 self.install_selected.remove(&index);
@@ -834,6 +777,7 @@ impl ToolboxApp {
         let icon = self.icon_for(&queries);
         let selected = self.remove_selected.contains(&index);
         let palette = self.palette();
+        let locked = self.selection_locked();
         if app_card(
             ui,
             width,
@@ -845,6 +789,7 @@ impl ToolboxApp {
             &palette,
         )
         .clicked()
+            && !locked
         {
             if selected {
                 self.remove_selected.remove(&index);
@@ -867,74 +812,16 @@ impl ToolboxApp {
         None
     }
 
-    fn admin_page(&mut self, ui: &mut Ui) {
+    fn stub_page(&self, ui: &mut Ui, title: &str, body: &str) {
         let palette = self.palette();
-        toolbar_frame(&palette).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Select maintenance tasks").color(palette.chrome_subtle));
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if flat_text_button(ui, "Clear", palette.chrome_subtle, 60.0, &palette)
-                        .clicked()
-                    {
-                        self.admin_selected.clear();
-                    }
-                    if flat_text_button(ui, "Select All", palette.chrome_text, 92.0, &palette)
-                        .clicked()
-                    {
-                        self.admin_selected = (0..self.admin_tasks.len()).collect();
-                    }
-                });
-            });
-        });
-        ui.add_space(10.0);
-
-        let mut categories: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-        for (index, task) in self.admin_tasks.iter().enumerate() {
-            categories
-                .entry(task.category.clone())
-                .or_default()
-                .push(index);
-        }
-
-        ScrollArea::vertical()
-            .id_salt("administration_tasks")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                let columns = card_columns(ui);
-                for (category, indexes) in categories {
-                    section_header(ui, &category, indexes.len(), &self.palette());
-                    self.card_rows(ui, columns, indexes.len(), |app, ui, index, width| {
-                        app.admin_tile(ui, indexes[index], width);
-                    });
-                    ui.add_space(12.0);
-                }
-            });
-    }
-
-    fn admin_tile(&mut self, ui: &mut Ui, index: usize, width: f32) {
-        let task = &self.admin_tasks[index];
-        let label = task.label.clone();
-        let description = admin_description(&label, &task.script).to_owned();
-        let selected = self.admin_selected.contains(&index);
-        let palette = self.palette();
-        if app_card(
-            ui,
-            width,
-            selected,
-            &label,
-            None,
-            &description,
-            None,
-            &palette,
-        )
-        .clicked()
-        {
-            if selected {
-                self.admin_selected.remove(&index);
-            } else {
-                self.admin_selected.insert(index);
-            }
-        }
+        ui.label(
+            RichText::new(title)
+                .font(FontId::proportional(26.0))
+                .color(palette.text)
+                .strong(),
+        );
+        ui.add_space(12.0);
+        ui.label(RichText::new(body).color(palette.muted));
     }
 
     fn system_info_page(&mut self, ui: &mut Ui) {
@@ -953,280 +840,327 @@ impl ToolboxApp {
         ];
 
         let palette = self.palette();
+        ui.label(
+            RichText::new("System")
+                .font(FontId::proportional(26.0))
+                .color(palette.text)
+                .strong(),
+        );
+        ui.add_space(16.0);
         Grid::new("system_info_grid")
             .num_columns(2)
             .spacing(Vec2::new(28.0, 14.0))
             .show(ui, |ui| {
                 for (label, value) in rows {
-                    ui.label(RichText::new(label).color(palette.chrome_subtle).strong());
-                    ui.label(RichText::new(value).color(palette.chrome_text));
+                    ui.label(RichText::new(label).color(palette.muted).strong());
+                    ui.label(RichText::new(value).color(palette.text));
                     ui.end_row();
                 }
             });
     }
 
-    fn cta_caption(&self) -> &'static str {
-        "Run Selected"
-    }
-
     fn modal_count_line(&self) -> String {
-        let mut parts = Vec::new();
-        let installs = self.install_selected.len();
-        let removals = self.remove_selected.len();
-        let admin = self.admin_selected.len();
-        if installs > 0 {
-            parts.push(format!("install {installs} apps"));
-        }
-        if removals > 0 {
-            parts.push(format!("remove {removals} apps"));
-        }
-        if admin > 0 {
-            parts.push(format!("run {admin} admin tasks"));
-        }
-        match parts.as_slice() {
-            [] => "This will run the selected tasks.".to_owned(),
-            [one] => format!("This will {one}."),
-            [first, second] => format!("This will {first} and {second}."),
-            [first, second, third] => format!("This will {first}, {second}, and {third}."),
-            _ => "This will run the selected tasks.".to_owned(),
+        let n = self.staged_count(self.apps_mode);
+        match self.apps_mode {
+            AppsMode::Install if n == 1 => "This will install 1 app.".to_owned(),
+            AppsMode::Install => format!("This will install {n} apps."),
+            AppsMode::Remove if n == 1 => "This will remove 1 app.".to_owned(),
+            AppsMode::Remove => format!("This will remove {n} apps."),
         }
     }
 
-    fn bottom_bar(&mut self, ui: &mut Ui, ctx: &Context) {
+    fn review_groups(&self) -> Vec<(&'static str, Vec<String>)> {
+        let install = if self.apps_mode == AppsMode::Install {
+            self.install_selected_names()
+        } else {
+            Vec::new()
+        };
+        let remove = if self.apps_mode == AppsMode::Remove {
+            self.remove_selected_names()
+        } else {
+            Vec::new()
+        };
+        let mut groups = Vec::new();
+        if !install.is_empty() {
+            groups.push(("Install", install));
+        }
+        if !remove.is_empty() {
+            groups.push(("Remove", remove));
+        }
+        groups
+    }
+
+    fn other_mode_staged_note(&self) -> Option<String> {
+        match self.apps_mode {
+            AppsMode::Install if !self.remove_selected.is_empty() => Some(format!(
+                "{} also staged in Remove. Switch to Remove to run those.",
+                self.remove_selected.len()
+            )),
+            AppsMode::Remove if !self.install_selected.is_empty() => Some(format!(
+                "{} also staged in Install. Switch to Install to run those.",
+                self.install_selected.len()
+            )),
+            _ => None,
+        }
+    }
+
+    fn run_dock(&mut self, ctx: &Context) {
+        if !self.dock_visible() {
+            return;
+        }
+
         let palette = self.palette();
-        if self.page != Page::SystemInfo {
-            summary_frame(&palette).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    let n = self.total_selected_count();
-                    ui.label(
-                        RichText::new(self.selection_summary())
-                            .color(palette.on_surface)
-                            .strong(),
-                    );
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let caption = if self.is_running {
-                            "Running..."
-                        } else {
-                            self.cta_caption()
-                        };
-                        if cta_button(ui, caption, !self.is_running && n > 0, &palette).clicked() {
-                            self.show_password_modal = true;
-                        }
+        let count = self.staged_count(self.apps_mode);
+        let names = truncated_names(&self.active_selected_names(), 42);
+
+        let mut clear = false;
+        let mut review = false;
+        let y_offset = if self.run_drawer_open { -28.0 } else { -24.0 };
+
+        Area::new(Id::new("run_dock"))
+            .anchor(Align2::CENTER_BOTTOM, [0.0, y_offset])
+            .order(Order::Foreground)
+            .show(ctx, |ui| {
+                Frame::new()
+                    .fill(palette.surface)
+                    .stroke(Stroke::new(1.0_f32, palette.border_strong))
+                    .corner_radius(DOCK_RADIUS)
+                    .inner_margin(egui::Margin::symmetric(18, 12))
+                    .shadow(egui::Shadow {
+                        offset: [0, 8],
+                        blur: 24,
+                        spread: 0,
+                        color: Color32::from_black_alpha(80),
+                    })
+                    .show(ui, |ui| {
+                        ui.set_min_width(DOCK_MIN_WIDTH);
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 8.0;
+                            ui.label(
+                                RichText::new(format!("{count}"))
+                                    .color(palette.accent)
+                                    .strong(),
+                            );
+                            ui.label(RichText::new("staged").color(palette.text).strong());
+                            ui.label(RichText::new(names).color(palette.muted));
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if cta_button(ui, "Review & Run  →", true, &palette).clicked() {
+                                    review = true;
+                                }
+                                ui.add_space(8.0);
+                                if ghost_button(ui, "Clear", &palette).clicked() {
+                                    clear = true;
+                                }
+                            });
+                        });
                     });
-                });
             });
+
+        if clear {
+            self.clear_active_mode_selections();
+        }
+        if review {
+            self.show_password_modal = true;
+        }
+    }
+
+    fn run_drawer(&mut self, ui: &mut Ui) {
+        let palette = self.palette();
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Run").color(palette.text).strong());
+            if self.is_running {
+                ui.add_space(8.0);
+                ui.spinner();
+            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ghost_button(ui, "Dismiss", &palette).clicked() {
+                    self.run_drawer_open = false;
+                }
+                ui.add_space(6.0);
+                if ghost_button(ui, "Clear Log", &palette).clicked() {
+                    self.log = "Process logs will appear here...".to_owned();
+                    self.log_revision = self.log_revision.saturating_add(1);
+                }
+            });
+        });
+        ui.add_space(8.0);
+
+        if !self.run_items.is_empty() {
+            ScrollArea::vertical()
+                .id_salt("run_task_status")
+                .max_height(72.0)
+                .show(ui, |ui| {
+                    for item in &self.run_items {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(task_status_label(item.status))
+                                    .color(task_status_color(item.status, &palette))
+                                    .strong(),
+                            );
+                            ui.label(RichText::new(&item.description).color(palette.text));
+                        });
+                    }
+                });
             ui.add_space(8.0);
         }
 
-        log_frame(&palette).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                small_terminal_icon(ui, &palette);
-                let header = ui.add(
-                    Button::new(
-                        RichText::new(if self.log_expanded {
-                            "Process Log ▾"
-                        } else {
-                            "Process Log ▸"
-                        })
-                        .color(palette.on_surface)
-                        .strong(),
-                    )
-                    .fill(Color32::TRANSPARENT)
-                    .stroke(Stroke::NONE),
-                );
-                if header.clicked() {
-                    self.log_expanded = !self.log_expanded;
-                }
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui
-                        .add(
-                            Button::new(RichText::new("Clear Log").color(palette.on_surface))
-                                .fill(palette.surface_hover)
-                                .stroke(Stroke::new(1.0_f32, palette.border)),
-                        )
-                        .clicked()
-                    {
-                        self.log = "Process logs will appear here...".to_owned();
-                        self.log_revision = self.log_revision.saturating_add(1);
-                    }
-                });
-            });
-            if self.log_expanded {
-                ui.add_space(6.0);
-                let log_height = (ui.available_height() - 6.0).max(96.0);
-                let showing_placeholder = self.log == "Process logs will appear here...";
-                Frame::new()
-                    .fill(palette.log_inner)
-                    .stroke(Stroke::new(1.0_f32, palette.border))
-                    .inner_margin(8.0)
+        let log_height = (ui.available_height() - 8.0).max(80.0);
+        let showing_placeholder = self.log == "Process logs will appear here...";
+        Frame::new()
+            .fill(palette.log_inner)
+            .stroke(Stroke::new(1.0_f32, palette.border))
+            .inner_margin(8.0)
+            .corner_radius(10.0)
+            .show(ui, |ui| {
+                ScrollArea::vertical()
+                    .id_salt("run_drawer_log")
+                    .stick_to_bottom(true)
+                    .max_height(log_height)
                     .show(ui, |ui| {
-                        if showing_placeholder {
-                            ui.set_min_width(ui.available_width());
-                            ui.set_min_height(log_height - 18.0);
-                            ui.label(
-                                RichText::new(&self.log)
-                                    .font(FontId::monospace(12.5))
-                                    .color(palette.log_text),
-                            );
-                        } else {
-                            ScrollArea::vertical()
-                                .id_salt("process_log_scroll")
-                                .stick_to_bottom(true)
-                                .max_height(log_height)
-                                .show(ui, |ui| {
-                                    ui.set_min_width(ui.available_width());
-                                    ui.set_min_height(log_height - 18.0);
-                                    ui.label(
-                                        RichText::new(&self.log)
-                                            .font(FontId::monospace(12.5))
-                                            .color(palette.log_text),
-                                    );
-                                    ui.scroll_to_cursor(Some(Align::BOTTOM));
-                                });
+                        ui.set_min_width(ui.available_width());
+                        ui.set_min_height(log_height - 18.0);
+                        ui.label(
+                            RichText::new(&self.log)
+                                .font(FontId::monospace(12.5))
+                                .color(if showing_placeholder {
+                                    palette.muted
+                                } else {
+                                    palette.log_text
+                                }),
+                        );
+                        if !showing_placeholder {
+                            ui.scroll_to_cursor(Some(Align::BOTTOM));
                         }
                     });
-            } else {
-                ui.add_space(4.0);
-                ui.label(
-                    RichText::new(self.last_log_line())
-                        .font(FontId::monospace(12.0))
-                        .color(palette.on_surface),
-                );
-            }
-        });
+            });
+    }
 
-        if self.show_password_modal && ctx.input(|input| input.key_pressed(Key::Escape)) {
+    fn sudo_modal(&mut self, ctx: &Context) {
+        if !self.show_password_modal {
+            return;
+        }
+        let palette = self.palette();
+
+        if ctx.input(|input| input.key_pressed(Key::Escape)) {
             zeroize_string(&mut self.password);
             self.show_password_modal = false;
+            return;
         }
 
-        if self.show_password_modal {
-            let mut open = true;
-            let count_line = self.modal_count_line();
-            let install_names = self.install_selected_names();
-            let remove_names = self.remove_selected_names();
-            let admin_names = self.admin_selected_names();
-            let toolbox = self.remove_includes_toolbox();
-            egui::Window::new("Sudo Authentication")
-                .collapsible(false)
-                .resizable(false)
-                .title_bar(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .open(&mut open)
-                .frame(
-                    Frame::new()
-                        .fill(palette.modal_fill)
-                        .stroke(Stroke::new(2.0_f32, palette.border))
-                        .inner_margin(16.0)
-                        .corner_radius(8.0),
-                )
-                .show(ctx, |ui| {
+        let mut open = true;
+        let count_line = self.modal_count_line();
+        let groups = self.review_groups();
+        let other_note = self.other_mode_staged_note();
+        let toolbox = (self.apps_mode == AppsMode::Remove)
+            .then(|| self.remove_includes_toolbox())
+            .flatten();
+
+        egui::Window::new("Review & Run")
+            .collapsible(false)
+            .resizable(false)
+            .title_bar(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .open(&mut open)
+            .frame(
+                Frame::new()
+                    .fill(palette.modal_fill)
+                    .stroke(Stroke::new(1.0_f32, palette.border_strong))
+                    .inner_margin(18.0)
+                    .corner_radius(12.0),
+            )
+            .show(ctx, |ui| {
+                ui.set_min_width(320.0);
+                ui.label(
+                    RichText::new("Review & Run")
+                        .font(FontId::proportional(18.0))
+                        .color(palette.modal_text)
+                        .strong(),
+                );
+                ui.add_space(6.0);
+                ui.label(RichText::new(count_line).color(palette.modal_text));
+                if let Some(toolbox) = &toolbox {
+                    ui.add_space(6.0);
                     ui.label(
-                        RichText::new("Sudo Authentication")
-                            .font(FontId::proportional(18.0))
-                            .color(palette.modal_text)
-                            .strong(),
+                        RichText::new(format!(
+                            "This selection includes the running Toolbox: {toolbox}."
+                        ))
+                        .color(palette.danger)
+                        .strong(),
                     );
-                    ui.add_space(8.0);
-                    ui.label(
-                        RichText::new("Enter your sudo password to run the selected tasks.")
-                            .color(palette.modal_text),
-                    );
-                    ui.add_space(4.0);
-                    ui.label(RichText::new(count_line).color(palette.modal_text));
-                    if let Some(toolbox) = &toolbox {
-                        ui.add_space(6.0);
-                        ui.label(
-                            RichText::new(format!(
-                                "This selection includes the running Toolbox: {toolbox}."
-                            ))
-                            .color(palette.modal_text)
-                            .strong(),
-                        );
-                    }
-                    let has_names = !install_names.is_empty()
-                        || !remove_names.is_empty()
-                        || !admin_names.is_empty();
-                    if has_names {
-                        ui.add_space(8.0);
-                        ScrollArea::vertical()
-                            .id_salt("sudo_name_list")
-                            .max_height(240.0)
-                            .show(ui, |ui| {
-                                let mut first_group = true;
-                                for (header, names) in [
-                                    ("Install", &install_names),
-                                    ("Remove", &remove_names),
-                                    ("Administration", &admin_names),
-                                ] {
-                                    if names.is_empty() {
-                                        continue;
-                                    }
-                                    if !first_group {
-                                        ui.add_space(6.0);
-                                    }
-                                    first_group = false;
-                                    ui.label(
-                                        RichText::new(header).color(palette.modal_text).strong(),
-                                    );
-                                    for name in names {
-                                        ui.label(
-                                            RichText::new(format!("• {name}"))
-                                                .color(palette.modal_text),
-                                        );
-                                    }
+                }
+                if !groups.is_empty() {
+                    ui.add_space(10.0);
+                    ScrollArea::vertical()
+                        .id_salt("sudo_name_list")
+                        .max_height(240.0)
+                        .show(ui, |ui| {
+                            let mut first_group = true;
+                            for (header, names) in &groups {
+                                if !first_group {
+                                    ui.add_space(6.0);
                                 }
-                            });
-                    }
+                                first_group = false;
+                                ui.label(RichText::new(*header).color(palette.modal_text).strong());
+                                for name in names {
+                                    ui.label(
+                                        RichText::new(format!("• {name}"))
+                                            .color(palette.modal_text),
+                                    );
+                                }
+                            }
+                        });
+                }
+                if let Some(note) = &other_note {
                     ui.add_space(8.0);
-                    let response = ui.add(
-                        TextEdit::singleline(&mut self.password)
-                            .password(true)
-                            .desired_width(280.0)
-                            .text_color(palette.on_surface)
-                            .background_color(palette.input_fill),
+                    ui.label(RichText::new(note).color(palette.muted));
+                }
+                ui.add_space(12.0);
+                ui.label(RichText::new("Sudo password").color(palette.muted).strong());
+                ui.add_space(4.0);
+                let response = ui.add(
+                    TextEdit::singleline(&mut self.password)
+                        .password(true)
+                        .hint_text(RichText::new("Required to run").color(palette.muted))
+                        .desired_width(280.0)
+                        .text_color(palette.text)
+                        .background_color(palette.input_fill),
+                );
+                if response.lost_focus()
+                    && ui.input(|input| input.key_pressed(Key::Enter))
+                    && !self.password.is_empty()
+                {
+                    self.show_password_modal = false;
+                    self.run_selected(ctx);
+                }
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    let cancel = ui.add_sized(
+                        [88.0, 32.0],
+                        Button::new(RichText::new("Cancel").color(palette.cancel_text).strong())
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(Stroke::new(1.0_f32, palette.cancel_text)),
                     );
-                    if response.lost_focus()
-                        && ui.input(|input| input.key_pressed(Key::Enter))
-                        && !self.password.is_empty()
+                    if cancel.clicked() {
+                        zeroize_string(&mut self.password);
+                        self.show_password_modal = false;
+                    }
+                    if ui
+                        .add_enabled(
+                            !self.password.is_empty(),
+                            Button::new(RichText::new("Confirm").color(palette.cta_text).strong())
+                                .fill(palette.cta_fill)
+                                .stroke(Stroke::new(1.0_f32, palette.cta_fill)),
+                        )
+                        .clicked()
                     {
                         self.show_password_modal = false;
                         self.run_selected(ctx);
                     }
-                    ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        let cancel = ui.add_sized(
-                            [88.0, 32.0],
-                            Button::new(
-                                RichText::new("Cancel").color(palette.cancel_text).strong(),
-                            )
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(Stroke::new(1.0_f32, palette.cancel_text)),
-                        );
-                        if cancel.clicked() {
-                            zeroize_string(&mut self.password);
-                            self.show_password_modal = false;
-                        }
-                        if ui
-                            .add_enabled(
-                                !self.password.is_empty(),
-                                Button::new(
-                                    RichText::new("Confirm").color(palette.cta_text).strong(),
-                                )
-                                .fill(palette.cta_fill)
-                                .stroke(Stroke::new(1.0_f32, palette.cta_fill)),
-                            )
-                            .clicked()
-                        {
-                            self.show_password_modal = false;
-                            self.run_selected(ctx);
-                        }
-                    });
                 });
-            if !open {
-                zeroize_string(&mut self.password);
-                self.show_password_modal = false;
-            }
+            });
+        if !open {
+            zeroize_string(&mut self.password);
+            self.show_password_modal = false;
         }
     }
 }
@@ -1237,52 +1171,50 @@ impl eframe::App for ToolboxApp {
         self.drain_remove_scan();
 
         let palette = self.palette();
-        Panel::left("sidebar")
+        Panel::left("rail")
             .resizable(false)
-            .exact_size(252.0)
-            .frame(
-                Frame::new()
-                    .fill(palette.sidebar)
-                    .stroke(Stroke::new(1.0_f32, palette.border))
-                    .inner_margin(14.0),
-            )
-            .show_inside(ui, |ui| self.sidebar(ui));
+            .exact_size(RAIL_WIDTH)
+            .frame(Frame::new().fill(palette.void).inner_margin(6.0))
+            .show_inside(ui, |ui| self.rail(ui));
 
-        Panel::top("header")
-            .frame(
-                Frame::new()
-                    .fill(palette.background)
-                    .stroke(Stroke::new(1.0_f32, palette.border))
-                    .inner_margin(egui::Margin::symmetric(16, 14)),
-            )
-            .show_inside(ui, |ui| self.header(ui));
-
-        let bottom_height = bottom_panel_height(self.page, self.log_expanded);
-        Panel::bottom("bottom")
-            .exact_size(bottom_height)
-            .frame(
-                Frame::new()
-                    .fill(palette.background)
-                    .stroke(Stroke::new(1.0_f32, palette.border))
-                    .inner_margin(egui::Margin::symmetric(14, 10)),
-            )
-            .show_inside(ui, |ui| {
-                let ctx = ui.ctx().clone();
-                self.bottom_bar(ui, &ctx);
-            });
+        if self.run_drawer_open {
+            let height = (ui.ctx().content_rect().height() * 0.40).clamp(220.0, 480.0);
+            Panel::bottom("run_drawer")
+                .exact_size(height)
+                .frame(
+                    Frame::new()
+                        .fill(palette.surface)
+                        .stroke(Stroke::new(1.0_f32, palette.border_strong))
+                        .inner_margin(egui::Margin::symmetric(16, 12)),
+                )
+                .show_inside(ui, |ui| self.run_drawer(ui));
+        }
 
         CentralPanel::default()
-            .frame(
-                Frame::new()
-                    .fill(palette.background)
-                    .inner_margin(egui::Margin::symmetric(16, 16)),
-            )
+            .frame(Frame::new().fill(palette.void).inner_margin(egui::Margin {
+                left: 40,
+                right: 40,
+                top: 28,
+                bottom: 120,
+            }))
             .show_inside(ui, |ui| match self.page {
-                Page::Install => self.install_page(ui),
-                Page::Remove => self.remove_page(ui),
-                Page::Administration => self.admin_page(ui),
-                Page::SystemInfo => self.system_info_page(ui),
+                Page::Home => self.stub_page(
+                    ui,
+                    "Home",
+                    "Home is coming in a later release. Use Apps to install or remove software.",
+                ),
+                Page::Apps => self.apps_page(ui),
+                Page::Recipes => self.stub_page(
+                    ui,
+                    "Recipes",
+                    "Recipes is coming in a later release. Admin task presets will live here.",
+                ),
+                Page::System => self.system_info_page(ui),
             });
+
+        let ctx = ui.ctx().clone();
+        self.run_dock(&ctx);
+        self.sudo_modal(&ctx);
     }
 }
 
@@ -1330,147 +1262,112 @@ fn load_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
     icons
 }
 
-fn load_distro_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
-    let mut icons = HashMap::new();
-    for &(key, svg) in crate::logos::DISTRO_SVGS {
-        if let Some(raster) = crate::logos::rasterize_svg_markup(svg, 64) {
-            let color_image = crate::logos::color_image_from_raster(&raster);
-            icons.insert(
-                key,
-                ctx.load_texture(format!("distro-{key}"), color_image, TextureOptions::LINEAR),
-            );
-        }
-    }
-    icons
-}
-
-fn nav_button(ui: &mut Ui, page: Page, selected: bool, palette: &Palette) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 44.0), Sense::click());
+fn rail_button(ui: &mut Ui, page: Page, selected: bool, palette: &Palette) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(44.0, 44.0), Sense::click());
     let fill = if selected {
-        palette.nav_selected
+        palette.elevated
     } else if response.hovered() {
         palette.nav_hover
     } else {
         Color32::TRANSPARENT
     };
-    ui.painter().rect_filled(rect, 7.0, fill);
-    if selected {
-        let marker = Rect::from_min_size(rect.min + vec2(0.0, 9.0), vec2(3.0, 26.0));
-        ui.painter().rect_filled(marker, 2.0, palette.nav_marker);
-    }
+    ui.painter().rect_filled(rect, 12.0, fill);
+    let icon_color = if selected {
+        palette.accent
+    } else {
+        palette.muted
+    };
     paint_page_symbol(
         ui.painter(),
-        Rect::from_min_size(rect.min + vec2(18.0, 10.0), vec2(24.0, 24.0)),
+        Rect::from_center_size(rect.center(), vec2(22.0, 22.0)),
         page,
-        palette.chrome_text,
+        icon_color,
     );
-    ui.painter().text(
-        pos2(rect.min.x + 56.0, rect.center().y),
-        Align2::LEFT_CENTER,
-        page.title(),
-        FontId::proportional(15.0),
-        palette.chrome_text,
-    );
-    response
-}
-
-fn nav_aux_button(ui: &mut Ui, label: &str, symbol: &str, palette: &Palette) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click());
-    if response.hovered() {
-        ui.painter().rect_filled(rect, 7.0, palette.nav_hover);
+    if selected {
+        let pip = pos2(rect.right() - 6.0, rect.center().y);
+        ui.painter().circle_filled(pip, 3.0, palette.accent);
     }
-    let icon = Rect::from_min_size(rect.min + vec2(20.0, 9.0), vec2(22.0, 22.0));
-    ui.painter().circle_stroke(
-        icon.center(),
-        10.0,
-        Stroke::new(1.5_f32, palette.chrome_subtle),
-    );
-    ui.painter().text(
-        icon.center(),
-        Align2::CENTER_CENTER,
-        symbol,
-        FontId::proportional(14.0),
-        palette.chrome_subtle,
-    );
-    ui.painter().text(
-        pos2(rect.min.x + 56.0, rect.center().y),
-        Align2::LEFT_CENTER,
-        label,
-        FontId::proportional(14.0),
-        palette.chrome_subtle,
-    );
-    response
+    response.on_hover_text(page.title())
 }
 
 fn theme_toggle_button(ui: &mut Ui, palette: &Palette) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(52.0, 48.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(44.0, 44.0), Sense::click());
     let response = response.on_hover_text(palette.mode.toggle_tooltip());
     let punch = if response.hovered() {
-        ui.painter().rect_filled(rect, 8.0, palette.nav_hover);
+        ui.painter().rect_filled(rect, 12.0, palette.nav_hover);
         palette.nav_hover
     } else {
-        palette.sidebar
+        palette.void
     };
-    let icon_rect = Rect::from_center_size(rect.center(), vec2(26.0, 26.0));
+    let icon_rect = Rect::from_center_size(rect.center(), vec2(22.0, 22.0));
     palette.paint_toggle_icon(ui.painter(), icon_rect, punch);
     response
 }
 
-fn chip(ui: &mut Ui, label: &str, selected: bool, icon: Option<&TextureHandle>, palette: &Palette) {
-    let (rect, _) = ui.allocate_exact_size(vec2(104.0, 34.0), Sense::hover());
-    ui.painter().rect_filled(
-        rect,
-        7.0,
-        if selected {
-            palette.chip_selected
-        } else {
-            palette.chip_idle
+fn mode_segment(ui: &mut Ui, mode: AppsMode, palette: &Palette) -> Option<AppsMode> {
+    let mut clicked = None;
+    ui.allocate_ui_with_layout(
+        vec2(196.0, 36.0),
+        Layout::left_to_right(Align::Center),
+        |ui| {
+            Frame::new()
+                .fill(palette.surface)
+                .stroke(Stroke::new(1.0_f32, palette.border))
+                .corner_radius(18.0)
+                .inner_margin(egui::Margin::symmetric(4, 4))
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    if segment_button(ui, "Install", mode == AppsMode::Install, palette).clicked() {
+                        clicked = Some(AppsMode::Install);
+                    }
+                    if segment_button(ui, "Remove", mode == AppsMode::Remove, palette).clicked() {
+                        clicked = Some(AppsMode::Remove);
+                    }
+                });
         },
     );
-    if !selected {
-        ui.painter().rect_stroke(
-            rect,
-            7.0,
-            Stroke::new(1.0_f32, palette.border),
-            StrokeKind::Inside,
-        );
+    clicked
+}
+
+fn segment_button(ui: &mut Ui, label: &str, selected: bool, palette: &Palette) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(88.0, 28.0), Sense::click());
+    if selected {
+        ui.painter().rect_filled(rect, 14.0, palette.text);
+    } else if response.hovered() {
+        ui.painter().rect_filled(rect, 14.0, palette.nav_hover);
     }
-    distro_mark(
-        ui.painter(),
-        Rect::from_min_size(rect.min + vec2(10.0, 8.0), vec2(18.0, 18.0)),
-        label,
-        selected,
-        icon,
-        palette,
-    );
     ui.painter().text(
-        pos2(rect.min.x + 38.0, rect.center().y),
-        Align2::LEFT_CENTER,
+        rect.center(),
+        Align2::CENTER_CENTER,
         label,
         FontId::proportional(13.0),
         if selected {
-            palette.chip_selected_text
+            palette.void
         } else {
-            palette.chip_idle_text
+            palette.muted
         },
     );
+    response
 }
 
 fn filter_chip(ui: &mut Ui, label: &str, selected: bool, palette: &Palette) -> egui::Response {
-    let width = (label.len() as f32 * 7.4 + 22.0).clamp(42.0, 128.0);
-    let (rect, response) = ui.allocate_exact_size(vec2(width, 32.0), Sense::click());
+    let width = (label.len() as f32 * 7.4 + 24.0).clamp(48.0, 132.0);
+    let (rect, response) = ui.allocate_exact_size(vec2(width, 30.0), Sense::click());
     let fill = if selected {
-        palette.filter_selected_fill
+        match palette.mode {
+            ThemeMode::Dark => palette.filter_selected_fill,
+            ThemeMode::Light => palette.accent_bright,
+        }
     } else if response.hovered() {
-        palette.nav_hover
+        palette.surface_hover
     } else {
         Color32::TRANSPARENT
     };
-    ui.painter().rect_filled(rect, 5.0, fill);
+    ui.painter().rect_filled(rect, 15.0, fill);
     if !selected {
         ui.painter().rect_stroke(
             rect,
-            5.0,
+            15.0,
             Stroke::new(1.0_f32, palette.border),
             StrokeKind::Inside,
         );
@@ -1483,194 +1380,95 @@ fn filter_chip(ui: &mut Ui, label: &str, selected: bool, palette: &Palette) -> e
         if selected {
             palette.filter_selected_text
         } else {
-            palette.filter_idle_text
+            palette.muted
         },
-    );
-    response
-}
-
-fn flat_text_button(
-    ui: &mut Ui,
-    label: &str,
-    color: Color32,
-    width: f32,
-    palette: &Palette,
-) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(width, 32.0), Sense::click());
-    if response.hovered() {
-        ui.painter().rect_filled(rect, 5.0, palette.nav_hover);
-    }
-    ui.painter().text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        label,
-        FontId::proportional(12.5),
-        color,
     );
     response
 }
 
 fn search_field(ui: &mut Ui, search: &mut String, hint: &str, palette: &Palette) {
-    let response = Frame::new()
-        .fill(palette.input_fill)
+    let width = ui.available_width();
+    Frame::new()
+        .fill(palette.surface)
         .stroke(Stroke::new(1.0_f32, palette.input_border))
-        .corner_radius(5.0)
-        .inner_margin(egui::Margin::symmetric(8, 0))
+        .corner_radius(14.0)
+        .inner_margin(egui::Margin::symmetric(14, 0))
         .show(ui, |ui| {
-            ui.set_min_width(260.0);
-            ui.set_max_width(260.0);
-            ui.horizontal(|ui| {
-                let (icon_rect, _) = ui.allocate_exact_size(vec2(18.0, 32.0), Sense::hover());
+            ui.set_width(width);
+            ui.set_height(SEARCH_HEIGHT);
+            ui.horizontal_centered(|ui| {
+                let (icon_rect, _) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::hover());
                 paint_search_icon(ui.painter(), icon_rect, palette);
-                ui.add_sized(
-                    [220.0, 32.0],
+                ui.add_space(8.0);
+                ui.add(
                     TextEdit::singleline(search)
-                        .hint_text(RichText::new(hint).color(palette.on_surface))
-                        .font(FontId::proportional(13.0))
-                        .desired_width(220.0)
-                        .text_color(palette.on_surface)
+                        .hint_text(RichText::new(hint).color(palette.muted))
+                        .font(FontId::proportional(14.0))
+                        .desired_width(ui.available_width())
+                        .frame(Frame::NONE)
+                        .text_color(palette.text)
                         .background_color(palette.input_fill),
                 );
             });
-        })
-        .response;
-
-    if response.clicked() {
-        response.request_focus();
-    }
+        });
 }
 
 fn paint_search_icon(painter: &Painter, rect: Rect, palette: &Palette) {
-    let center = pos2(rect.left() + 8.0, rect.center().y - 1.0);
-    painter.circle_stroke(center, 5.0, Stroke::new(1.4_f32, palette.on_surface_subtle));
+    let center = pos2(rect.left() + 7.0, rect.center().y - 1.0);
+    painter.circle_stroke(center, 6.0, Stroke::new(1.5_f32, palette.muted));
     painter.line_segment(
         [
-            pos2(center.x + 4.0, center.y + 4.0),
+            pos2(center.x + 4.5, center.y + 4.5),
             pos2(center.x + 9.0, center.y + 9.0),
         ],
-        Stroke::new(1.4_f32, palette.on_surface_subtle),
+        Stroke::new(1.5_f32, palette.muted),
     );
 }
 
-fn count_badge(ui: &mut Ui, count: usize, palette: &Palette) {
-    let (rect, _) = ui.allocate_exact_size(vec2(28.0, 20.0), Sense::hover());
-    ui.painter().rect_filled(rect, 10.0, palette.count_badge);
-    ui.painter().rect_stroke(
-        rect,
-        10.0,
-        Stroke::new(1.0_f32, palette.border),
-        StrokeKind::Inside,
-    );
-    ui.painter().text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        format!("{count}"),
-        FontId::proportional(11.0),
-        palette.count_badge_text,
-    );
-}
-
-fn section_header(ui: &mut Ui, title: &str, count: usize, palette: &Palette) {
-    ui.horizontal(|ui| {
-        category_icon(ui, title, palette);
-        ui.label(
-            RichText::new(title)
-                .font(FontId::proportional(15.0))
-                .color(palette.chrome_text)
-                .strong(),
-        );
-        count_badge(ui, count, palette);
-    });
-    ui.add_space(6.0);
-}
-
-fn toolbar_frame(palette: &Palette) -> Frame {
-    Frame::new()
-        .fill(palette.toolbar)
-        .stroke(Stroke::new(1.0_f32, palette.border))
-        .inner_margin(egui::Margin::symmetric(12, 7))
-}
-
-fn summary_frame(palette: &Palette) -> Frame {
-    Frame::new()
-        .fill(palette.summary)
-        .stroke(Stroke::new(1.0_f32, palette.border))
-        .inner_margin(egui::Margin::symmetric(12, 8))
-}
-
-fn log_frame(palette: &Palette) -> Frame {
-    Frame::new()
-        .fill(palette.log_frame)
-        .stroke(Stroke::new(1.0_f32, palette.border))
-        .inner_margin(egui::Margin::symmetric(10, 8))
-}
-
-fn card_title_color(palette: &Palette) -> Color32 {
-    match palette.mode {
-        ThemeMode::Dark => palette.on_surface,
-        ThemeMode::Light => palette.chrome_text,
-    }
-}
-
-fn card_detail_color(palette: &Palette) -> Color32 {
-    match palette.mode {
-        ThemeMode::Dark => palette.on_surface_subtle,
-        ThemeMode::Light => palette.chrome_subtle,
-    }
-}
-
-fn paint_row_background(painter: &Painter, rect: Rect, selected: bool, palette: &Palette) {
-    let fill = if selected {
-        palette.tile_selected
-    } else {
-        palette.tile
-    };
-    painter.rect_filled(rect, 8.0, fill);
-    painter.rect_stroke(
-        rect,
-        8.0,
-        Stroke::new(1.0_f32, palette.border),
-        StrokeKind::Inside,
-    );
-    if selected {
-        painter.rect_stroke(
-            rect,
-            8.0,
-            Stroke::new(1.5_f32, palette.accent),
-            StrokeKind::Inside,
-        );
-    }
-}
-
-fn paint_checkbox(painter: &Painter, rect: Rect, selected: bool, palette: &Palette) {
+fn paint_card_background(painter: &Painter, rect: Rect, selected: bool, palette: &Palette) {
     painter.rect_filled(
         rect,
-        3.0,
+        CARD_RADIUS,
         if selected {
-            palette.cta_fill
+            palette.tile_selected
         } else {
-            palette.checkbox_empty
+            palette.tile
         },
     );
+    if selected {
+        painter.rect_filled(rect, CARD_RADIUS, palette.accent_dim);
+    }
     painter.rect_stroke(
         rect,
-        3.0,
+        CARD_RADIUS,
         Stroke::new(
-            1.0_f32,
+            if selected { 1.5_f32 } else { 1.0_f32 },
             if selected {
-                palette.cta_fill
+                palette.accent
             } else {
-                palette.checkbox_border
+                palette.border
             },
         ),
         StrokeKind::Inside,
     );
+}
+
+fn paint_check(painter: &Painter, rect: Rect, selected: bool, palette: &Palette) {
+    let center = rect.center();
+    let radius = rect.width() / 2.0;
     if selected {
-        let a = pos2(rect.left() + 4.0, rect.center().y);
-        let b = pos2(rect.left() + 7.0, rect.bottom() - 5.0);
-        let c = pos2(rect.right() - 4.0, rect.top() + 5.0);
-        painter.line_segment([a, b], Stroke::new(2.0_f32, palette.checkbox_check));
-        painter.line_segment([b, c], Stroke::new(2.0_f32, palette.checkbox_check));
+        painter.circle_filled(center, radius, palette.accent);
+        let a = pos2(rect.left() + 6.0, center.y);
+        let b = pos2(rect.left() + 9.5, rect.bottom() - 6.5);
+        let c = pos2(rect.right() - 6.0, rect.top() + 6.5);
+        painter.line_segment([a, b], Stroke::new(2.0_f32, palette.accent_on));
+        painter.line_segment([b, c], Stroke::new(2.0_f32, palette.accent_on));
+    } else {
+        painter.circle_stroke(
+            center,
+            radius - 0.5,
+            Stroke::new(1.2_f32, palette.border_strong),
+        );
     }
 }
 
@@ -1681,34 +1479,24 @@ fn paint_app_icon(
     icon: Option<&(TextureHandle, bool)>,
     palette: &Palette,
 ) {
+    painter.circle_filled(rect.center(), rect.width() / 2.0, palette.icon_well);
     if let Some((icon, mono)) = icon {
-        painter.circle_filled(rect.center(), rect.width() / 2.0, palette.icon_well);
-        let tint = if *mono {
-            palette.chrome_text
-        } else {
-            Color32::WHITE
-        };
+        let tint = if *mono { palette.text } else { Color32::WHITE };
         painter.image(
             icon.id(),
-            rect,
+            rect.shrink(4.0),
             Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
             tint,
         );
         return;
     }
 
-    painter.circle_filled(rect.center(), rect.width() / 2.0, palette.icon_well);
-    painter.circle_stroke(
-        rect.center(),
-        rect.width() / 2.0,
-        Stroke::new(1.5_f32, palette.chrome_text),
-    );
     painter.text(
         rect.center(),
         Align2::CENTER_CENTER,
         app_mark(label),
         FontId::proportional(16.0),
-        palette.chrome_text,
+        palette.text,
     );
 }
 
@@ -1724,67 +1512,63 @@ fn app_card(
     palette: &Palette,
 ) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(vec2(width, CARD_HEIGHT), Sense::click());
-    paint_row_background(ui.painter(), rect, selected, palette);
+    paint_card_background(ui.painter(), rect, selected, palette);
 
-    let check_rect = Rect::from_min_size(
-        rect.min + vec2(12.0, (CARD_HEIGHT - 16.0) / 2.0),
-        vec2(16.0, 16.0),
-    );
-    paint_checkbox(ui.painter(), check_rect, selected, palette);
-
-    let icon_rect = Rect::from_min_size(
-        rect.min + vec2(40.0, (CARD_HEIGHT - CARD_ICON) / 2.0),
-        vec2(CARD_ICON, CARD_ICON),
-    );
+    let icon_rect = Rect::from_min_size(rect.min + vec2(16.0, 16.0), vec2(CARD_ICON, CARD_ICON));
     paint_app_icon(ui.painter(), icon_rect, label, icon, palette);
 
-    let text_left = rect.min.x + 92.0;
+    let check_rect = Rect::from_min_size(
+        pos2(rect.right() - 16.0 - CHECK_SIZE, rect.min.y + 16.0),
+        vec2(CHECK_SIZE, CHECK_SIZE),
+    );
+    paint_check(ui.painter(), check_rect, selected, palette);
+
+    let text_left = rect.min.x + 16.0;
+    let text_width = (rect.width() - 32.0).max(24.0);
     let painter = ui.painter();
     painter.text(
-        pos2(text_left, rect.min.y + 22.0),
+        pos2(text_left, rect.min.y + 72.0),
         Align2::LEFT_CENTER,
         label,
-        FontId::proportional(15.0),
-        card_title_color(palette),
+        FontId::proportional(14.0),
+        palette.text,
     );
 
-    let mut desc_left = text_left;
-    if let Some(source) = source {
-        let badge_center = pos2(text_left + 28.0, rect.min.y + 52.0);
-        paint_badge(painter, badge_center, source, palette);
-        desc_left = text_left + 68.0;
-    }
-
-    let desc_width = (rect.right() - 12.0 - desc_left).max(24.0);
     let galley = painter.layout(
         description.to_owned(),
         FontId::proportional(12.0),
-        card_detail_color(palette),
-        desc_width,
+        palette.muted,
+        text_width,
     );
-    let desc_pos = pos2(desc_left, rect.min.y + 44.0);
-    let clip = Rect::from_min_size(desc_pos, vec2(desc_width, 22.0));
+    let desc_pos = pos2(text_left, rect.min.y + 86.0);
+    let clip = Rect::from_min_size(desc_pos, vec2(text_width, 32.0));
     painter
         .with_clip_rect(clip)
-        .galley(desc_pos, galley, card_detail_color(palette));
+        .galley(desc_pos, galley, palette.muted);
+
+    if let Some(source) = source {
+        paint_source_pill(
+            painter,
+            pos2(text_left + 4.0, rect.bottom() - 22.0),
+            source,
+            palette,
+        );
+    }
 
     response
 }
 
 fn card_columns(ui: &Ui) -> usize {
-    let width = ui.ctx().viewport_rect().width();
-    if width >= 1280.0 {
-        3
-    } else if width < 1000.0 {
-        1
-    } else {
+    if ui.available_width() < CONTENT_TWO_COL {
         2
+    } else {
+        3
     }
 }
 
 fn tile_width(ui: &Ui, columns: usize) -> f32 {
     let columns = columns.max(1) as f32;
-    ((ui.available_width() - CARD_GAP * (columns - 1.0)) / columns).max(240.0)
+    ((ui.available_width() - CARD_GAP * (columns - 1.0)) / columns).max(220.0)
 }
 
 fn cta_button(ui: &mut Ui, label: &str, enabled: bool, palette: &Palette) -> egui::Response {
@@ -1793,19 +1577,31 @@ fn cta_button(ui: &mut Ui, label: &str, enabled: bool, palette: &Palette) -> egu
         Button::new(RichText::new(label).color(palette.cta_text).strong())
             .fill(palette.cta_fill)
             .stroke(Stroke::new(1.0_f32, palette.cta_fill))
-            .min_size(vec2(120.0, 34.0)),
+            .corner_radius(12.0)
+            .min_size(vec2(132.0, 34.0)),
     )
 }
 
-fn bottom_panel_height(page: Page, log_expanded: bool) -> f32 {
-    let mut height = 56.0;
-    if page != Page::SystemInfo {
-        height += 52.0;
+fn ghost_button(ui: &mut Ui, label: &str, palette: &Palette) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(64.0, 32.0), Sense::click());
+    if response.hovered() {
+        ui.painter().rect_filled(rect, 8.0, palette.surface_hover);
     }
-    if log_expanded {
-        height += 168.0;
-    }
-    height
+    ui.painter().text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        label,
+        FontId::proportional(13.0),
+        palette.muted,
+    );
+    response
+}
+
+fn centered_status(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+    ui.allocate_ui_with_layout(ui.available_size(), Layout::top_down(Align::Center), |ui| {
+        ui.add_space(80.0);
+        add(ui);
+    });
 }
 
 fn resolve_icon_key(key: &'static str, theme: ThemeMode) -> &'static str {
@@ -1846,44 +1642,65 @@ fn removable_remove_command(
     entry.try_command(base_dir, "remove")
 }
 
-fn paint_badge(painter: &Painter, center: Pos2, label: &str, palette: &Palette) {
-    let width = if label == "native + flatpak" {
-        104.0
-    } else {
-        56.0
-    };
-    let rect = Rect::from_center_size(center, vec2(width, 22.0));
-    let native = label.contains("native");
-    let fill = if native {
-        palette.badge_native_fill
-    } else {
-        palette.badge_flatpak_fill
-    };
-    let stroke = if native {
-        palette.badge_native_stroke
-    } else {
-        palette.badge_flatpak_stroke
-    };
-    let text = if native {
-        palette.badge_native_text
-    } else {
-        palette.badge_flatpak_text
-    };
-    painter.rect_filled(rect, 5.0, fill);
-    let stroke_width = if native { 1.0_f32 } else { 1.5_f32 };
+fn paint_source_pill(painter: &Painter, left_center: Pos2, label: &str, palette: &Palette) {
+    let text = source_pill_label(label);
+    let width = (text.len() as f32 * 7.2 + 16.0).clamp(56.0, 140.0);
+    let rect = Rect::from_center_size(
+        pos2(left_center.x + width / 2.0, left_center.y),
+        vec2(width, 20.0),
+    );
+    painter.rect_filled(rect, 6.0, palette.elevated);
     painter.rect_stroke(
         rect,
-        5.0,
-        Stroke::new(stroke_width, stroke),
+        6.0,
+        Stroke::new(1.0_f32, palette.border),
         StrokeKind::Inside,
     );
     painter.text(
         rect.center(),
         Align2::CENTER_CENTER,
-        label,
-        FontId::proportional(11.0),
         text,
+        FontId::proportional(10.5),
+        palette.muted,
     );
+}
+
+fn source_pill_label(source: &str) -> String {
+    source.to_ascii_uppercase()
+}
+
+fn truncated_names(names: &[String], max_chars: usize) -> String {
+    let joined = names.join(", ");
+    if joined.chars().count() <= max_chars {
+        return joined;
+    }
+    let mut output = String::new();
+    for (index, ch) in joined.chars().enumerate() {
+        if index + 1 >= max_chars {
+            output.push('…');
+            break;
+        }
+        output.push(ch);
+    }
+    output
+}
+
+fn task_status_label(status: TaskStatus) -> &'static str {
+    match status {
+        TaskStatus::Queued => "Queued",
+        TaskStatus::Running => "Running",
+        TaskStatus::Success => "Done",
+        TaskStatus::Failed => "Failed",
+    }
+}
+
+fn task_status_color(status: TaskStatus, palette: &Palette) -> Color32 {
+    match status {
+        TaskStatus::Queued => palette.muted,
+        TaskStatus::Running => palette.accent,
+        TaskStatus::Success => palette.accent,
+        TaskStatus::Failed => palette.danger,
+    }
 }
 
 fn toolbox_icon(ui: &mut Ui, size: f32, palette: &Palette) {
@@ -1896,7 +1713,7 @@ fn toolbox_icon(ui: &mut Ui, size: f32, palette: &Palette) {
     painter.rect_stroke(
         body,
         3.0,
-        Stroke::new(1.8_f32, palette.chrome_text),
+        Stroke::new(1.8_f32, palette.text),
         StrokeKind::Inside,
     );
     painter.line_segment(
@@ -1904,7 +1721,7 @@ fn toolbox_icon(ui: &mut Ui, size: f32, palette: &Palette) {
             pos2(body.left(), body.top() + 6.0),
             pos2(body.right(), body.top() + 6.0),
         ],
-        Stroke::new(1.4_f32, palette.chrome_text),
+        Stroke::new(1.4_f32, palette.text),
     );
     painter.rect_stroke(
         Rect::from_min_size(
@@ -1912,255 +1729,71 @@ fn toolbox_icon(ui: &mut Ui, size: f32, palette: &Palette) {
             vec2(10.0, 6.0),
         ),
         2.0,
-        Stroke::new(1.5_f32, palette.chrome_text),
+        Stroke::new(1.5_f32, palette.text),
         StrokeKind::Inside,
-    );
-}
-
-fn page_icon(ui: &mut Ui, page: Page, size: f32, filled: bool, palette: &Palette) {
-    let (rect, _) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
-    if filled {
-        ui.painter()
-            .circle_filled(rect.center(), size / 2.0, palette.page_icon_fill);
-    }
-    paint_page_symbol(
-        ui.painter(),
-        rect.shrink(size * 0.24),
-        page,
-        palette.chrome_text,
     );
 }
 
 fn paint_page_symbol(painter: &Painter, rect: Rect, page: Page, color: Color32) {
-    let stroke = Stroke::new(1.8_f32, color);
+    let stroke = Stroke::new(1.7_f32, color);
     match page {
-        Page::Install => {
-            painter.line_segment(
-                [
-                    pos2(rect.center().x, rect.top()),
-                    pos2(rect.center().x, rect.bottom() - 6.0),
-                ],
-                stroke,
-            );
-            painter.line_segment(
-                [
-                    pos2(rect.left() + 4.0, rect.center().y),
-                    pos2(rect.center().x, rect.bottom() - 6.0),
-                ],
-                stroke,
-            );
-            painter.line_segment(
-                [
-                    pos2(rect.right() - 4.0, rect.center().y),
-                    pos2(rect.center().x, rect.bottom() - 6.0),
-                ],
-                stroke,
-            );
-            painter.line_segment(
-                [
-                    pos2(rect.left(), rect.bottom()),
-                    pos2(rect.right(), rect.bottom()),
-                ],
-                stroke,
-            );
-        }
-        Page::Remove => {
+        Page::Home => {
+            let peak = pos2(rect.center().x, rect.top() + 2.0);
+            painter.line_segment([pos2(rect.left() + 2.0, rect.center().y), peak], stroke);
+            painter.line_segment([peak, pos2(rect.right() - 2.0, rect.center().y)], stroke);
             painter.rect_stroke(
                 Rect::from_min_max(
-                    pos2(rect.left() + 3.0, rect.top() + 6.0),
-                    pos2(rect.right() - 3.0, rect.bottom()),
+                    pos2(rect.left() + 5.0, rect.center().y),
+                    pos2(rect.right() - 5.0, rect.bottom() - 1.0),
                 ),
-                2.0,
+                1.5,
                 stroke,
                 StrokeKind::Inside,
             );
+        }
+        Page::Apps => {
+            let r = 3.2;
+            let inset = 4.0;
+            painter.circle_filled(pos2(rect.left() + inset, rect.top() + inset), r, color);
+            painter.circle_filled(pos2(rect.right() - inset, rect.top() + inset), r, color);
+            painter.circle_filled(pos2(rect.left() + inset, rect.bottom() - inset), r, color);
+            painter.circle_filled(pos2(rect.right() - inset, rect.bottom() - inset), r, color);
+        }
+        Page::Recipes => {
+            painter.rect_stroke(rect.shrink(2.0), 2.0, stroke, StrokeKind::Inside);
             painter.line_segment(
                 [
-                    pos2(rect.left(), rect.top() + 5.0),
-                    pos2(rect.right(), rect.top() + 5.0),
+                    pos2(rect.left() + 6.0, rect.top() + 7.0),
+                    pos2(rect.right() - 6.0, rect.top() + 7.0),
                 ],
                 stroke,
             );
             painter.line_segment(
                 [
-                    pos2(rect.center().x - 4.0, rect.top()),
-                    pos2(rect.center().x + 4.0, rect.top()),
-                ],
-                stroke,
-            );
-        }
-        Page::Administration => {
-            painter.circle_stroke(rect.center(), rect.width() * 0.38, stroke);
-            painter.line_segment(
-                [rect.center(), pos2(rect.center().x, rect.top() + 4.0)],
-                stroke,
-            );
-            painter.line_segment(
-                [rect.center(), pos2(rect.right() - 4.0, rect.center().y)],
-                stroke,
-            );
-        }
-        Page::SystemInfo => {
-            painter.rect_stroke(rect, 2.0, stroke, StrokeKind::Inside);
-            painter.line_segment(
-                [
-                    pos2(rect.left() + 4.0, rect.center().y),
-                    pos2(rect.left() + 9.0, rect.center().y),
+                    pos2(rect.left() + 6.0, rect.center().y),
+                    pos2(rect.right() - 6.0, rect.center().y),
                 ],
                 stroke,
             );
             painter.line_segment(
                 [
-                    pos2(rect.left() + 9.0, rect.center().y),
-                    pos2(rect.left() + 12.0, rect.top() + 6.0),
+                    pos2(rect.left() + 6.0, rect.bottom() - 7.0),
+                    pos2(rect.right() - 8.0, rect.bottom() - 7.0),
                 ],
+                stroke,
+            );
+        }
+        Page::System => {
+            painter.circle_stroke(rect.center(), rect.width() * 0.28, stroke);
+            painter.line_segment(
+                [rect.center(), pos2(rect.center().x, rect.top() + 2.0)],
                 stroke,
             );
             painter.line_segment(
-                [
-                    pos2(rect.left() + 12.0, rect.top() + 6.0),
-                    pos2(rect.left() + 17.0, rect.bottom() - 5.0),
-                ],
-                stroke,
-            );
-            painter.line_segment(
-                [
-                    pos2(rect.left() + 17.0, rect.bottom() - 5.0),
-                    pos2(rect.right() - 4.0, rect.bottom() - 5.0),
-                ],
+                [rect.center(), pos2(rect.right() - 2.0, rect.center().y)],
                 stroke,
             );
         }
-    }
-}
-
-fn category_icon(ui: &mut Ui, title: &str, palette: &Palette) {
-    let (rect, _) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::hover());
-    let painter = ui.painter();
-    let stroke = Stroke::new(1.4_f32, palette.chrome_subtle);
-    match title {
-        "Browsers" => {
-            painter.circle_stroke(rect.center(), 9.0, stroke);
-            painter.line_segment(
-                [
-                    pos2(rect.left() + 3.0, rect.center().y),
-                    pos2(rect.right() - 3.0, rect.center().y),
-                ],
-                stroke,
-            );
-            painter.line_segment(
-                [
-                    pos2(rect.center().x, rect.top() + 3.0),
-                    pos2(rect.center().x, rect.bottom() - 3.0),
-                ],
-                stroke,
-            );
-        }
-        "Communication" => {
-            painter.rect_stroke(rect.shrink(3.0), 3.0, stroke, StrokeKind::Inside);
-            painter.line_segment(
-                [
-                    pos2(rect.left() + 7.0, rect.bottom() - 4.0),
-                    pos2(rect.left() + 5.0, rect.bottom() - 1.0),
-                ],
-                stroke,
-            );
-        }
-        "Dev Tools" => {
-            painter.text(
-                rect.center(),
-                Align2::CENTER_CENTER,
-                "</>",
-                FontId::proportional(12.0),
-                palette.chrome_subtle,
-            );
-        }
-        "Gaming" => {
-            painter.text(
-                rect.center(),
-                Align2::CENTER_CENTER,
-                "pad",
-                FontId::proportional(9.0),
-                palette.chrome_subtle,
-            );
-        }
-        _ => {
-            painter.circle_stroke(rect.center(), 8.0, stroke);
-        }
-    }
-}
-
-fn small_terminal_icon(ui: &mut Ui, palette: &Palette) {
-    let (rect, _) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::hover());
-    ui.painter().rect_stroke(
-        rect.shrink(2.0),
-        2.0,
-        Stroke::new(1.0_f32, palette.on_surface_subtle),
-        StrokeKind::Inside,
-    );
-    ui.painter().text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        ">",
-        FontId::monospace(10.0),
-        palette.on_surface_subtle,
-    );
-}
-
-fn distro_mark(
-    painter: &Painter,
-    rect: Rect,
-    label: &str,
-    selected: bool,
-    icon: Option<&TextureHandle>,
-    palette: &Palette,
-) {
-    if let Some(icon) = icon {
-        painter.image(
-            icon.id(),
-            rect,
-            Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
-            if selected {
-                palette.chip_selected_text
-            } else {
-                palette.chip_idle_text
-            },
-        );
-        return;
-    }
-
-    let color = if selected {
-        palette.chip_selected_text
-    } else {
-        palette.chip_idle_text
-    };
-    painter.text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        &label[..1],
-        FontId::proportional(18.0),
-        color,
-    );
-}
-
-fn distro_key(label: &str) -> &'static str {
-    match label {
-        "Arch" => "arch",
-        "Debian" => "debian",
-        "Fedora" => "fedora",
-        _ => "",
-    }
-}
-
-fn distro_selected(label: &str, package_manager: &str, distro_name: &str) -> bool {
-    let distro = distro_name.to_lowercase();
-    match label {
-        "Arch" => package_manager == "pacman" || distro.contains("arch"),
-        "Debian" => {
-            package_manager == "apt-get" || distro.contains("debian") || distro.contains("ubuntu")
-        }
-        "Fedora" => package_manager == "dnf" || distro.contains("fedora"),
-        _ => false,
     }
 }
 
@@ -2185,23 +1818,23 @@ fn app_mark(label: &str) -> &str {
 
 fn app_description(label: &str) -> &'static str {
     match label {
-        "Brave Browser" => "Privacy-focused browser",
+        "Brave Browser" => "Privacy-focused browser with built-in shields.",
         "Brave Origin" => "Native Origin browser",
         "Google Chrome" => "The web browser from Google",
-        "Firefox" => "Web browser from Mozilla",
+        "Firefox" => "Web browser from Mozilla.",
         "Microsoft Edge" => "Microsoft's web browser",
         "Opera" => "Fast and secure browser",
         "Vivaldi" => "Customizable web browser",
         "Zen" => "Modern Firefox-based browser",
-        "Discord" => "Voice and text chat",
-        "Signal" => "Private messenger",
+        "Discord" => "Voice and text chat for communities.",
+        "Signal" => "Private messenger.",
         "Slack" => "Team communication hub",
         "Thunderbird" => "Email client from Mozilla",
         "Visual Studio Code" => "Code editor redefined",
         "PyCharm Community" => "Python IDE",
         "Bottles" => "Run Windows apps on Linux",
         "Boxes" => "Simple VM manager",
-        "Steam" => "Gaming platform",
+        "Steam" => "Games library and storefront.",
         "Lutris" => "Open gaming platform",
         "ProtonUp-Qt" => "Manage Proton versions",
         "Sober" => "Linux Roblox port",
@@ -2210,7 +1843,7 @@ fn app_description(label: &str) -> &'static str {
         "Flatseal" => "Flatpak permissions UI",
         "Telegram" => "Messaging app",
         "Prism Launcher" => "Minecraft launcher",
-        "Obsidian" => "Knowledge base",
+        "Obsidian" => "Linked notes and knowledge base.",
         "RetroArch" => "Multi-system emulator",
         "Extension Manager" => "GNOME extensions",
         "Dolphin Emulator" => "GameCube and Wii emulator",
@@ -2223,39 +1856,17 @@ fn app_description(label: &str) -> &'static str {
         "Stremio" => "Media center",
         "LibreWolf" => "Privacy-focused Firefox fork",
         "Mission Center" => "System monitor",
-        "GIMP" => "Image editor",
+        "GIMP" => "Image editing and compositing.",
         "VLC" => "Media player",
         "mpv" => "Video player",
         "Audacity" => "Audio editor",
         "LibreOffice" => "Office suite",
         "OnlyOffice" => "Document editors",
-        "OBS Studio" => "Streaming and recording",
+        "OBS Studio" => "Live streaming and recording.",
         "GParted" => "Partition editor",
         "htop" => "Interactive process viewer",
-        "LocalSend" => "Share files on the LAN",
+        "LocalSend" => "Share files across devices on LAN.",
         _ => "Application from the Toolbox catalog",
-    }
-}
-
-fn admin_description(label: &str, script: &str) -> &'static str {
-    match label {
-        "Enable Bluetooth" => "Unblock and start Bluetooth service",
-        "Disable Bluetooth" => "Block and stop Bluetooth service",
-        "TLP (Laptops)" => "Install and enable laptop power tuning",
-        "Powertop" => "Install power analysis tooling",
-        "Update System" => "Upgrade packages and Flatpaks",
-        "nala (rank mirrors) - Debian only" => "Install nala and rank Debian mirrors",
-        "Stacer" => "Install system optimizer",
-        "SWAP Fix" => "Set vm.swappiness to 10",
-        "Fastfetch" => "Install system info utility",
-        _ => match script {
-            "enable-bluetooth.sh" => "Enable Bluetooth",
-            "disable-bluetooth.sh" => "Disable Bluetooth",
-            "install-tlp.sh" => "Power management setup",
-            "install-powertop.sh" => "Power usage analysis",
-            "update-system.sh" => "System package upgrade",
-            _ => "Run maintenance helper",
-        },
     }
 }
 
@@ -2305,15 +1916,6 @@ fn icon_key(label: &str) -> &'static str {
     }
 }
 
-fn page_subtitle(page: Page) -> &'static str {
-    match page {
-        Page::Install => "Select applications to install on your system.",
-        Page::Remove => "Remove apps that are installed on this system.",
-        Page::Administration => "Run common Linux maintenance and power tasks.",
-        Page::SystemInfo => "Inspect local system and runtime details.",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2349,7 +1951,8 @@ mod tests {
     fn test_app() -> ToolboxApp {
         ToolboxApp {
             base_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")),
-            page: Page::Install,
+            page: Page::Apps,
+            apps_mode: AppsMode::Install,
             apps: vec![sample_app("Firefox", "firefox"), sample_app("VLC", "vlc")],
             admin_tasks: vec![AdminTask {
                 category: "System".to_owned(),
@@ -2371,9 +1974,9 @@ mod tests {
             tx: None,
             rx: None,
             log_revision: 0,
-            log_expanded: false,
+            run_drawer_open: false,
+            run_items: Vec::new(),
             icons: HashMap::new(),
-            distro_icons: HashMap::new(),
             theme: ThemeMode::Dark,
             remove_apps: vec![
                 sample_removable("htop", "htop", false),
@@ -2426,38 +2029,86 @@ mod tests {
     }
 
     #[test]
-    fn combined_task_builder_queues_install_then_remove_then_admin() {
+    fn run_queue_uses_active_apps_mode_only() {
         let mut app = test_app();
         app.install_selected.insert(0);
         app.remove_selected.insert(0);
         app.admin_selected.insert(0);
 
-        for page in [
-            Page::Install,
-            Page::Remove,
-            Page::Administration,
-            Page::SystemInfo,
-        ] {
-            app.page = page;
-            assert_eq!(app.total_selected_count(), 3);
-            assert_eq!(app.cta_caption(), "Run Selected");
-            assert_eq!(app.selection_summary(), "1 install · 1 remove · 1 admin");
-            assert_eq!(
-                app.modal_count_line(),
-                "This will install 1 apps, remove 1 apps, and run 1 admin tasks."
-            );
-            let tasks = app.selected_tasks().expect("combined tasks");
-            assert_eq!(tasks.len(), 3, "{page:?}");
-            assert_eq!(tasks[0].description, "Installing Firefox");
-            assert_eq!(tasks[1].description, "Removing htop");
-            assert_eq!(tasks[2].description, "Running Update System");
-            assert_eq!(tasks[0].command.last().map(String::as_str), Some("install"));
-            assert_eq!(tasks[1].command.last().map(String::as_str), Some("remove"));
-        }
+        app.apps_mode = AppsMode::Install;
+        assert_eq!(app.staged_count(app.apps_mode), 1);
+        assert_eq!(app.modal_count_line(), "This will install 1 app.");
+        let tasks = app.selected_tasks().expect("install tasks");
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].description, "Installing Firefox");
+        assert_eq!(tasks[0].command.last().map(String::as_str), Some("install"));
+
+        app.apps_mode = AppsMode::Remove;
+        assert_eq!(app.staged_count(app.apps_mode), 1);
+        assert_eq!(app.modal_count_line(), "This will remove 1 app.");
+        let tasks = app.selected_tasks().expect("remove tasks");
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].description, "Removing htop");
+        assert_eq!(tasks[0].command.last().map(String::as_str), Some("remove"));
+        assert!(app.install_selected.contains(&0));
     }
 
     #[test]
-    fn switching_pages_does_not_clear_other_selection() {
+    fn review_lists_active_mode_names_grouped() {
+        let mut app = test_app();
+        app.install_selected.insert(0);
+        app.install_selected.insert(1);
+        app.remove_selected.insert(0);
+
+        app.apps_mode = AppsMode::Install;
+        assert_eq!(
+            app.review_groups(),
+            vec![("Install", vec!["Firefox".into(), "VLC".into()])]
+        );
+        assert_eq!(
+            app.other_mode_staged_note().as_deref(),
+            Some("1 also staged in Remove. Switch to Remove to run those.")
+        );
+
+        app.apps_mode = AppsMode::Remove;
+        assert_eq!(app.review_groups(), vec![("Remove", vec!["htop".into()])]);
+        assert_eq!(
+            app.other_mode_staged_note().as_deref(),
+            Some("2 also staged in Install. Switch to Install to run those.")
+        );
+        assert!(app.remove_includes_toolbox().is_none());
+        app.remove_selected.insert(1);
+        assert!(app.remove_includes_toolbox().is_some());
+    }
+
+    #[test]
+    fn review_modal_shows_grouped_names_before_password() {
+        let src = production_main();
+        let groups = src
+            .split("fn review_groups")
+            .nth(1)
+            .and_then(|rest| rest.split("fn other_mode_staged_note").next())
+            .expect("review_groups body");
+        assert!(groups.contains("\"Install\""));
+        assert!(groups.contains("\"Remove\""));
+        let modal = src
+            .split("fn sudo_modal")
+            .nth(1)
+            .and_then(|rest| rest.split("impl eframe::App").next())
+            .expect("sudo_modal body");
+        assert!(modal.contains("Review & Run"));
+        assert!(modal.contains("review_groups"));
+        assert!(modal.contains("sudo_name_list"));
+        let name_list = modal.find("sudo_name_list").expect("name list");
+        let password = modal.find("Sudo password").expect("password label");
+        assert!(
+            name_list < password,
+            "staged names must appear before the sudo password field"
+        );
+    }
+
+    #[test]
+    fn switching_apps_mode_does_not_clear_other_selection() {
         let mut app = test_app();
         app.install_selected.insert(0);
         app.remove_selected.insert(0);
@@ -2466,81 +2117,90 @@ mod tests {
         app.install_category = Some("Browsers".to_owned());
         app.remove_search = "htop".to_owned();
 
-        app.switch_page(Page::Remove);
-        assert_eq!(app.page, Page::Remove);
+        app.apps_mode = AppsMode::Remove;
+        assert_eq!(app.page, Page::Apps);
         assert_eq!(app.install_search, "firefox");
         assert_eq!(app.install_category.as_deref(), Some("Browsers"));
         assert_eq!(app.remove_search, "htop");
         assert!(app.install_selected.contains(&0));
         assert!(app.remove_selected.contains(&0));
-        assert!(app.admin_selected.contains(&0));
-        assert_eq!(app.total_selected_count(), 3);
+        assert_eq!(app.staged_count(AppsMode::Install), 1);
+        assert_eq!(app.staged_count(AppsMode::Remove), 1);
 
-        app.switch_page(Page::Install);
-        assert_eq!(app.install_search, "firefox");
-        assert_eq!(app.install_category.as_deref(), Some("Browsers"));
+        app.apps_mode = AppsMode::Install;
         assert!(app.remove_selected.contains(&0));
-        assert_eq!(app.cta_caption(), "Run Selected");
+        assert_eq!(app.staged_count(app.apps_mode), 1);
 
-        app.switch_page(Page::Administration);
+        app.switch_page(Page::Home);
         assert!(app.install_selected.contains(&0));
         assert!(app.remove_selected.contains(&0));
-        assert!(app.admin_selected.contains(&0));
-        assert_eq!(app.total_selected_count(), 3);
-        assert_eq!(app.selected_tasks().expect("union").len(), 3);
+        assert!(!app.dock_visible());
     }
 
     #[test]
-    fn clear_on_install_does_not_wipe_remove_selections() {
+    fn dock_clear_only_clears_active_mode() {
         let mut app = test_app();
-        app.page = Page::Install;
+        app.apps_mode = AppsMode::Install;
         app.install_selected.insert(0);
         app.install_selected.insert(1);
         app.remove_selected.insert(0);
         app.admin_selected.insert(0);
 
-        app.select_visible_apps(false);
+        app.clear_active_mode_selections();
         assert!(app.install_selected.is_empty());
         assert!(app.remove_selected.contains(&0));
         assert!(app.admin_selected.contains(&0));
-        assert_eq!(app.selection_summary(), "1 remove · 1 admin");
+        assert_eq!(app.staged_count(AppsMode::Remove), 1);
+        assert!(!app.dock_visible());
+
+        app.apps_mode = AppsMode::Remove;
+        assert!(app.dock_visible());
+        app.clear_active_mode_selections();
+        assert!(app.remove_selected.is_empty());
+        assert!(!app.dock_visible());
     }
 
     #[test]
-    fn selection_summary_and_count_line_omit_empty_sides() {
+    fn dock_is_hidden_at_rest_and_while_running() {
         let mut app = test_app();
-        assert_eq!(app.selection_summary(), "0 selected");
+        assert!(!app.dock_visible());
         app.install_selected.insert(0);
-        assert_eq!(app.selection_summary(), "1 to install");
-        assert_eq!(app.modal_count_line(), "This will install 1 apps.");
-        app.remove_selected.insert(0);
-        assert_eq!(app.selection_summary(), "1 install · 1 remove");
-        assert_eq!(
-            app.modal_count_line(),
-            "This will install 1 apps and remove 1 apps."
-        );
-        app.install_selected.clear();
-        assert_eq!(app.selection_summary(), "1 to remove");
-        assert_eq!(app.modal_count_line(), "This will remove 1 apps.");
-        app.remove_selected.insert(1);
-        assert!(app.remove_includes_toolbox().is_some());
-        app.remove_selected.clear();
-        app.admin_selected.insert(0);
-        assert_eq!(app.selection_summary(), "1 admin task");
-        assert_eq!(app.modal_count_line(), "This will run 1 admin tasks.");
+        assert!(app.dock_visible());
+        app.is_running = true;
+        assert!(!app.dock_visible());
+        assert!(app.selection_locked());
+        app.is_running = false;
+        app.switch_page(Page::System);
+        assert!(!app.dock_visible());
     }
 
     #[test]
-    fn accepting_the_queue_clears_all_three_selection_sets() {
+    fn run_freezes_selections_instead_of_clearing_them() {
         let mut app = test_app();
         app.install_selected.insert(0);
         app.remove_selected.insert(0);
-        app.admin_selected.insert(0);
+        app.is_running = true;
+        assert!(app.selection_locked());
+        assert!(app.install_selected.contains(&0));
+        assert!(app.remove_selected.contains(&0));
         app.clear_all_selections();
         assert!(app.install_selected.is_empty());
         assert!(app.remove_selected.is_empty());
         assert!(app.admin_selected.is_empty());
-        assert_eq!(app.total_selected_count(), 0);
+    }
+
+    #[test]
+    fn source_pills_are_uppercase() {
+        assert_eq!(source_pill_label("native"), "NATIVE");
+        assert_eq!(source_pill_label("flatpak"), "FLATPAK");
+        assert_eq!(source_pill_label("native + flatpak"), "NATIVE + FLATPAK");
+    }
+
+    #[test]
+    fn truncated_names_keep_short_lists() {
+        let names = vec!["Brave".into(), "Discord".into(), "Firefox".into()];
+        assert_eq!(truncated_names(&names, 42), "Brave, Discord, Firefox");
+        assert!(truncated_names(&names, 12).ends_with('…'));
     }
 
     #[test]
@@ -2602,20 +2262,8 @@ mod tests {
     }
 
     #[test]
-    fn card_columns_match_window_breakpoints() {
-        assert_eq!(
-            {
-                let w = 1180.0;
-                if w >= 1280.0 {
-                    3
-                } else if w < 1000.0 {
-                    1
-                } else {
-                    2
-                }
-            },
-            2
-        );
+    fn card_columns_use_content_width_breakpoint() {
+        assert_eq!(CONTENT_TWO_COL, 720.0);
         assert_eq!(
             resolve_icon_key("zen-browser", ThemeMode::Dark),
             "zen-browser"
@@ -2624,6 +2272,22 @@ mod tests {
             resolve_icon_key("zen-browser", ThemeMode::Light),
             "zen-browser-dark"
         );
+    }
+
+    #[test]
+    fn chrome_uses_apps_mode_and_lumen_rail() {
+        let src = production_main();
+        assert!(src.contains("enum AppsMode"));
+        assert!(src.contains("Page::Apps"));
+        assert!(!src.contains("Page::Install"));
+        assert!(!src.contains("Page::Remove"));
+        assert!(!src.contains("Page::Administration"));
+        assert!(!src.contains("Supported Distros"));
+        assert!(!src.contains("Select All"));
+        assert!(src.contains("Review & Run"));
+        assert!(src.contains("run_dock"));
+        assert_eq!(RAIL_WIDTH, 68.0);
+        assert_eq!(CARD_HEIGHT, 164.0);
     }
 
     #[test]
@@ -2640,5 +2304,13 @@ mod tests {
         assert!(theme.contains("paint_theme_toggle"));
         assert!(!theme.contains("paint_sun"));
         assert!(!theme.contains("paint_moon"));
+    }
+
+    #[test]
+    fn retired_brand_hexes_are_gone_from_main_chrome() {
+        let src = production_main();
+        for retired in ["#E9FC12", "E9FC12", "#1A365D", "1A365D", "#CDEDFE"] {
+            assert!(!src.contains(retired), "{retired}");
+        }
     }
 }

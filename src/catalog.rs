@@ -107,6 +107,7 @@ impl AppEntry {
 
 #[derive(Clone, Debug)]
 pub struct AdminTask {
+    #[allow(dead_code)]
     pub category: String,
     pub label: String,
     pub script: String,

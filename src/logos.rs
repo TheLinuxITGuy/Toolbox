@@ -1,13 +1,14 @@
 //! Logos compiled into the binary.
 //!
-//! Distro chips, app tiles, and the Brave Origin tile use SVG markup via
+//! App tiles, distro marks, and the Brave Origin tile use SVG markup via
 //! `include_str!`. Icons are vendored from dashboard-icons (Apache-2.0) or
 //! Simple Icons (CC0). See `assets/logos/NOTICE`. Nothing under `assets/` is
 //! read from disk at runtime.
 
 use eframe::egui::ColorImage;
 
-/// Distro SVG markup keyed the same way the header chips look them up.
+/// Distro SVG markup keyed the same way the former header chips looked them up.
+#[allow(dead_code)]
 pub const DISTRO_SVGS: &[(&str, &str)] = &[
     ("arch", include_str!("../assets/distros/arch.svg")),
     ("debian", include_str!("../assets/distros/debian.svg")),

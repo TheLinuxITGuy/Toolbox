@@ -869,6 +869,41 @@ impl ToolboxApp {
         }
     }
 
+    fn review_groups(&self) -> Vec<(&'static str, Vec<String>)> {
+        let install = if self.apps_mode == AppsMode::Install {
+            self.install_selected_names()
+        } else {
+            Vec::new()
+        };
+        let remove = if self.apps_mode == AppsMode::Remove {
+            self.remove_selected_names()
+        } else {
+            Vec::new()
+        };
+        let mut groups = Vec::new();
+        if !install.is_empty() {
+            groups.push(("Install", install));
+        }
+        if !remove.is_empty() {
+            groups.push(("Remove", remove));
+        }
+        groups
+    }
+
+    fn other_mode_staged_note(&self) -> Option<String> {
+        match self.apps_mode {
+            AppsMode::Install if !self.remove_selected.is_empty() => Some(format!(
+                "{} also staged in Remove. Switch to Remove to run those.",
+                self.remove_selected.len()
+            )),
+            AppsMode::Remove if !self.install_selected.is_empty() => Some(format!(
+                "{} also staged in Install. Switch to Install to run those.",
+                self.install_selected.len()
+            )),
+            _ => None,
+        }
+    }
+
     fn run_dock(&mut self, ctx: &Context) {
         if !self.dock_visible() {
             return;
@@ -1014,16 +1049,13 @@ impl ToolboxApp {
 
         let mut open = true;
         let count_line = self.modal_count_line();
-        let names = self.active_selected_names();
+        let groups = self.review_groups();
+        let other_note = self.other_mode_staged_note();
         let toolbox = (self.apps_mode == AppsMode::Remove)
             .then(|| self.remove_includes_toolbox())
             .flatten();
-        let mode_header = match self.apps_mode {
-            AppsMode::Install => "Install",
-            AppsMode::Remove => "Remove",
-        };
 
-        egui::Window::new("Sudo Authentication")
+        egui::Window::new("Review & Run")
             .collapsible(false)
             .resizable(false)
             .title_bar(false)
@@ -1033,22 +1065,18 @@ impl ToolboxApp {
                 Frame::new()
                     .fill(palette.modal_fill)
                     .stroke(Stroke::new(1.0_f32, palette.border_strong))
-                    .inner_margin(16.0)
+                    .inner_margin(18.0)
                     .corner_radius(12.0),
             )
             .show(ctx, |ui| {
+                ui.set_min_width(320.0);
                 ui.label(
-                    RichText::new("Sudo Authentication")
+                    RichText::new("Review & Run")
                         .font(FontId::proportional(18.0))
                         .color(palette.modal_text)
                         .strong(),
                 );
-                ui.add_space(8.0);
-                ui.label(
-                    RichText::new("Enter your sudo password to run the selected tasks.")
-                        .color(palette.modal_text),
-                );
-                ui.add_space(4.0);
+                ui.add_space(6.0);
                 ui.label(RichText::new(count_line).color(palette.modal_text));
                 if let Some(toolbox) = &toolbox {
                     ui.add_space(6.0);
@@ -1060,28 +1088,39 @@ impl ToolboxApp {
                         .strong(),
                     );
                 }
-                if !names.is_empty() {
-                    ui.add_space(8.0);
+                if !groups.is_empty() {
+                    ui.add_space(10.0);
                     ScrollArea::vertical()
                         .id_salt("sudo_name_list")
                         .max_height(240.0)
                         .show(ui, |ui| {
-                            ui.label(
-                                RichText::new(mode_header)
-                                    .color(palette.modal_text)
-                                    .strong(),
-                            );
-                            for name in &names {
-                                ui.label(
-                                    RichText::new(format!("• {name}")).color(palette.modal_text),
-                                );
+                            let mut first_group = true;
+                            for (header, names) in &groups {
+                                if !first_group {
+                                    ui.add_space(6.0);
+                                }
+                                first_group = false;
+                                ui.label(RichText::new(*header).color(palette.modal_text).strong());
+                                for name in names {
+                                    ui.label(
+                                        RichText::new(format!("• {name}"))
+                                            .color(palette.modal_text),
+                                    );
+                                }
                             }
                         });
                 }
-                ui.add_space(8.0);
+                if let Some(note) = &other_note {
+                    ui.add_space(8.0);
+                    ui.label(RichText::new(note).color(palette.muted));
+                }
+                ui.add_space(12.0);
+                ui.label(RichText::new("Sudo password").color(palette.muted).strong());
+                ui.add_space(4.0);
                 let response = ui.add(
                     TextEdit::singleline(&mut self.password)
                         .password(true)
+                        .hint_text(RichText::new("Required to run").color(palette.muted))
                         .desired_width(280.0)
                         .text_color(palette.text)
                         .background_color(palette.input_fill),
@@ -2012,6 +2051,60 @@ mod tests {
         assert_eq!(tasks[0].description, "Removing htop");
         assert_eq!(tasks[0].command.last().map(String::as_str), Some("remove"));
         assert!(app.install_selected.contains(&0));
+    }
+
+    #[test]
+    fn review_lists_active_mode_names_grouped() {
+        let mut app = test_app();
+        app.install_selected.insert(0);
+        app.install_selected.insert(1);
+        app.remove_selected.insert(0);
+
+        app.apps_mode = AppsMode::Install;
+        assert_eq!(
+            app.review_groups(),
+            vec![("Install", vec!["Firefox".into(), "VLC".into()])]
+        );
+        assert_eq!(
+            app.other_mode_staged_note().as_deref(),
+            Some("1 also staged in Remove. Switch to Remove to run those.")
+        );
+
+        app.apps_mode = AppsMode::Remove;
+        assert_eq!(app.review_groups(), vec![("Remove", vec!["htop".into()])]);
+        assert_eq!(
+            app.other_mode_staged_note().as_deref(),
+            Some("2 also staged in Install. Switch to Install to run those.")
+        );
+        assert!(app.remove_includes_toolbox().is_none());
+        app.remove_selected.insert(1);
+        assert!(app.remove_includes_toolbox().is_some());
+    }
+
+    #[test]
+    fn review_modal_shows_grouped_names_before_password() {
+        let src = production_main();
+        let groups = src
+            .split("fn review_groups")
+            .nth(1)
+            .and_then(|rest| rest.split("fn other_mode_staged_note").next())
+            .expect("review_groups body");
+        assert!(groups.contains("\"Install\""));
+        assert!(groups.contains("\"Remove\""));
+        let modal = src
+            .split("fn sudo_modal")
+            .nth(1)
+            .and_then(|rest| rest.split("impl eframe::App").next())
+            .expect("sudo_modal body");
+        assert!(modal.contains("Review & Run"));
+        assert!(modal.contains("review_groups"));
+        assert!(modal.contains("sudo_name_list"));
+        let name_list = modal.find("sudo_name_list").expect("name list");
+        let password = modal.find("Sudo password").expect("password label");
+        assert!(
+            name_list < password,
+            "staged names must appear before the sudo password field"
+        );
     }
 
     #[test]

@@ -112,6 +112,8 @@ const DOCK_RADIUS: f32 = 20.0;
 const CONTENT_TWO_COL: f32 = 720.0;
 const INTENT_HEIGHT: f32 = 136.0;
 const GLANCE_HEIGHT: f32 = 88.0;
+const RECIPE_CARD_HEIGHT: f32 = 148.0;
+const RECIPE_PIP: f32 = 16.0;
 const TITLE_SIZE: f32 = 26.0;
 const FRESH_SETUP_LABELS: &[&str] = &["Update System", "Fastfetch"];
 const LAPTOP_POWER_LABELS: &[&str] = &["TLP (Laptops)", "Powertop"];
@@ -121,7 +123,6 @@ enum Glyph {
     Plus,
     Bolt,
     Briefcase,
-    Sliders,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -990,12 +991,17 @@ impl ToolboxApp {
             .id_salt("home_page")
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                ui.label(
-                    RichText::new(greeting())
-                        .font(FontId::proportional(TITLE_SIZE))
-                        .color(palette.text)
-                        .strong(),
-                );
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(greeting())
+                            .font(FontId::proportional(TITLE_SIZE))
+                            .color(palette.text)
+                            .strong(),
+                    );
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        status_pill(ui, "System up to date", &palette);
+                    });
+                });
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     let (dot, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
@@ -1142,11 +1148,10 @@ impl ToolboxApp {
     fn recipe_tile(&mut self, ui: &mut Ui, index: usize, width: f32) {
         let task = &self.admin_tasks[index];
         let label = task.label.clone();
-        let category = task.category.clone();
         let selected = self.admin_selected.contains(&index);
         let palette = self.palette();
         let locked = self.selection_locked();
-        if recipe_card(ui, width, selected, &label, &category, &palette).clicked() && !locked {
+        if recipe_card(ui, width, selected, &label, &palette).clicked() && !locked {
             if selected {
                 self.admin_selected.remove(&index);
             } else {
@@ -1319,14 +1324,19 @@ impl ToolboxApp {
                     .show(ui, |ui| {
                         ui.set_min_width(DOCK_MIN_WIDTH);
                         ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 8.0;
-                            ui.label(
-                                RichText::new(format!("{count}"))
-                                    .color(palette.accent)
-                                    .strong(),
-                            );
-                            ui.label(RichText::new("staged").color(palette.text).strong());
-                            ui.label(RichText::new(names).color(palette.muted));
+                            ui.spacing_mut().item_spacing.x = 12.0;
+                            ui.vertical(|ui| {
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 6.0;
+                                    ui.label(
+                                        RichText::new(format!("{count}"))
+                                            .color(palette.accent)
+                                            .strong(),
+                                    );
+                                    ui.label(RichText::new("staged").color(palette.text).strong());
+                                });
+                                ui.label(RichText::new(names).color(palette.muted));
+                            });
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if cta_button(ui, "Review & Run  →", true, &palette).clicked() {
                                     review = true;
@@ -2091,34 +2101,28 @@ fn recipe_card(
     width: f32,
     selected: bool,
     label: &str,
-    category: &str,
     palette: &Palette,
 ) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(width, CARD_HEIGHT), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(width, RECIPE_CARD_HEIGHT), Sense::click());
     paint_card_background(ui.painter(), rect, selected, palette);
 
-    let well = Rect::from_min_size(rect.min + vec2(16.0, 16.0), vec2(CARD_ICON, CARD_ICON));
+    let well = Rect::from_min_size(rect.min + vec2(16.0, 16.0), vec2(40.0, 40.0));
     ui.painter().rect_filled(well, 12.0, palette.icon_well);
-    paint_glyph(
-        ui.painter(),
-        well.shrink(10.0),
-        recipe_glyph(category),
-        palette.accent,
-    );
+    paint_glyph(ui.painter(), well.shrink(9.0), Glyph::Bolt, palette.accent);
 
-    let check_rect = Rect::from_min_size(
-        pos2(rect.right() - 16.0 - CHECK_SIZE, rect.min.y + 16.0),
-        vec2(CHECK_SIZE, CHECK_SIZE),
+    let pip_rect = Rect::from_min_size(
+        pos2(rect.right() - 16.0 - RECIPE_PIP, rect.min.y + 16.0),
+        vec2(RECIPE_PIP, RECIPE_PIP),
     );
-    paint_check(ui.painter(), check_rect, selected, palette);
+    paint_select_pip(ui.painter(), pip_rect, selected, palette);
 
     let text_left = rect.min.x + 16.0;
     let text_width = (rect.width() - 32.0).max(24.0);
     let painter = ui.painter();
     painter.text(
-        pos2(text_left, rect.min.y + 72.0),
-        Align2::LEFT_CENTER,
-        label,
+        pos2(text_left, rect.min.y + 68.0),
+        Align2::LEFT_TOP,
+        recipe_display_label(label),
         FontId::proportional(14.0),
         palette.text,
     );
@@ -2131,10 +2135,10 @@ fn recipe_card(
     );
     painter
         .with_clip_rect(Rect::from_min_size(
-            pos2(text_left, rect.min.y + 86.0),
-            vec2(text_width, 28.0),
+            pos2(text_left, rect.min.y + 88.0),
+            vec2(text_width, 24.0),
         ))
-        .galley(pos2(text_left, rect.min.y + 86.0), galley, palette.muted);
+        .galley(pos2(text_left, rect.min.y + 88.0), galley, palette.muted);
 
     if let Some(chip) = recipe_chip(label) {
         paint_warm_chip(
@@ -2148,50 +2152,99 @@ fn recipe_card(
     response
 }
 
-fn recipe_glyph(category: &str) -> Glyph {
-    if category == "Power Management" {
-        Glyph::Bolt
-    } else {
-        Glyph::Sliders
-    }
+fn recipe_display_label(label: &str) -> &str {
+    label.strip_suffix(" - Debian only").unwrap_or(label)
 }
 
 fn recipe_promise(label: &str) -> &'static str {
     match label {
-        "Enable Bluetooth" => "Turn Bluetooth on for this machine.",
-        "Disable Bluetooth" => "Turn Bluetooth off to save power.",
-        "TLP (Laptops)" => "Tune laptop power so the battery lasts.",
-        "Powertop" => "Diagnose and cut background power waste.",
-        "Update System" => "Bring packages on this machine up to date.",
-        "nala (rank mirrors) - Debian only" => "Rank Debian mirrors for faster apt.",
-        "Stacer" => "Lightweight Linux system optimizer.",
-        "SWAP Fix" => "Lower swappiness so resume stays snappy.",
-        "Fastfetch" => "Show a clean system summary in the terminal.",
+        "Enable Bluetooth" => "Turn the Bluetooth radio on",
+        "Disable Bluetooth" => "Turn the Bluetooth radio off",
+        "TLP (Laptops)" => "Install and enable laptop power tuning",
+        "Powertop" => "Install power analysis tooling",
+        "Update System" => "Full distro update now",
+        "nala (rank mirrors) - Debian only" => "Install nala and rank Debian mirrors",
+        "Stacer" => "Install system optimizer",
+        "SWAP Fix" => "Tune swappiness for this machine",
+        "Fastfetch" => "Install a clean system summary tool",
         _ => "Admin playbook for this machine.",
     }
 }
 
 fn recipe_chip(label: &str) -> Option<&'static str> {
     match label {
-        "Update System" | "SWAP Fix" => Some("Caution"),
-        other if other.contains("Debian only") => Some("Debian only"),
+        "TLP (Laptops)" => Some("LAPTOP"),
+        "Update System" | "SWAP Fix" => Some("CAUTION"),
+        other if other.contains("Debian only") => Some("DEBIAN ONLY"),
         _ => None,
     }
 }
 
+fn paint_select_pip(painter: &Painter, rect: Rect, selected: bool, palette: &Palette) {
+    let center = rect.center();
+    let radius = rect.width() / 2.0;
+    if selected {
+        painter.circle_filled(center, radius, palette.accent);
+    } else {
+        painter.circle_stroke(
+            center,
+            radius - 0.5,
+            Stroke::new(1.2_f32, palette.border_strong),
+        );
+    }
+}
+
 fn paint_warm_chip(painter: &Painter, left_center: Pos2, label: &str, palette: &Palette) {
-    let width = (label.len() as f32 * 7.2 + 16.0).clamp(56.0, 140.0);
+    let width = (label.len() as f32 * 7.0 + 18.0).clamp(56.0, 148.0);
     let rect = Rect::from_center_size(
         pos2(left_center.x + width / 2.0, left_center.y),
         vec2(width, 20.0),
     );
-    painter.rect_filled(rect, 6.0, palette.caution);
-    painter.text(
+    match palette.mode {
+        ThemeMode::Dark => {
+            painter.rect_stroke(
+                rect,
+                6.0,
+                Stroke::new(1.0_f32, palette.caution),
+                StrokeKind::Inside,
+            );
+            painter.text(
+                rect.center(),
+                Align2::CENTER_CENTER,
+                label,
+                FontId::proportional(10.0),
+                palette.caution,
+            );
+        }
+        ThemeMode::Light => {
+            painter.rect_filled(rect, 6.0, palette.caution);
+            painter.text(
+                rect.center(),
+                Align2::CENTER_CENTER,
+                label,
+                FontId::proportional(10.0),
+                palette.caution_on,
+            );
+        }
+    }
+}
+
+fn status_pill(ui: &mut Ui, label: &str, palette: &Palette) {
+    let width = (label.len() as f32 * 7.0 + 20.0).clamp(88.0, 160.0);
+    let (rect, _) = ui.allocate_exact_size(vec2(width, 26.0), Sense::hover());
+    ui.painter().rect_filled(rect, 13.0, palette.surface);
+    ui.painter().rect_stroke(
+        rect,
+        13.0,
+        Stroke::new(1.0_f32, palette.border),
+        StrokeKind::Inside,
+    );
+    ui.painter().text(
         rect.center(),
         Align2::CENTER_CENTER,
         label,
-        FontId::proportional(10.5),
-        palette.caution_on,
+        FontId::proportional(11.5),
+        palette.muted,
     );
 }
 
@@ -2270,13 +2323,6 @@ fn paint_glyph(painter: &Painter, rect: Rect, glyph: Glyph, color: Color32) {
                 stroke,
                 StrokeKind::Inside,
             );
-        }
-        Glyph::Sliders => {
-            for (y_off, knob) in [(0.22, 0.65), (0.50, 0.35), (0.78, 0.55)] {
-                let y = rect.top() + rect.height() * y_off;
-                painter.line_segment([pos2(rect.left(), y), pos2(rect.right(), y)], stroke);
-                painter.circle_filled(pos2(rect.left() + rect.width() * knob, y), 2.6, color);
-            }
         }
     }
 }
@@ -3091,6 +3137,7 @@ mod tests {
         assert!(home.contains("Jump to Recipes for essentials after a distro hop."));
         assert!(home.contains("Browse the catalog and stage what you need."));
         assert!(home.contains("TLP + Powertop tuned so the battery lasts."));
+        assert!(home.contains("System up to date"));
     }
 
     #[test]
@@ -3152,11 +3199,30 @@ mod tests {
                 task.label
             );
             match task.label.as_str() {
-                "Update System" | "SWAP Fix" => {
-                    assert_eq!(recipe_chip(&task.label), Some("Caution"));
+                "Enable Bluetooth" => {
+                    assert_eq!(promise, "Turn the Bluetooth radio on");
+                }
+                "Disable Bluetooth" => {
+                    assert_eq!(promise, "Turn the Bluetooth radio off");
+                }
+                "TLP (Laptops)" => {
+                    assert_eq!(promise, "Install and enable laptop power tuning");
+                    assert_eq!(recipe_chip(&task.label), Some("LAPTOP"));
+                }
+                "Powertop" => {
+                    assert_eq!(promise, "Install power analysis tooling");
+                }
+                "Update System" => {
+                    assert_eq!(promise, "Full distro update now");
+                    assert_eq!(recipe_chip(&task.label), Some("CAUTION"));
+                }
+                "SWAP Fix" => {
+                    assert_eq!(recipe_chip(&task.label), Some("CAUTION"));
                 }
                 other if other.contains("Debian only") => {
-                    assert_eq!(recipe_chip(&task.label), Some("Debian only"));
+                    assert_eq!(promise, "Install nala and rank Debian mirrors");
+                    assert_eq!(recipe_chip(&task.label), Some("DEBIAN ONLY"));
+                    assert_eq!(recipe_display_label(other), "nala (rank mirrors)");
                 }
                 _ => assert_eq!(recipe_chip(&task.label), None),
             }

@@ -154,6 +154,7 @@ struct ToolboxApp {
     log: String,
     password: String,
     show_password_modal: bool,
+    show_run_complete_modal: bool,
     is_running: bool,
     tx: Option<Sender<RunnerMessage>>,
     rx: Option<Receiver<RunnerMessage>>,
@@ -222,6 +223,7 @@ impl ToolboxApp {
             log,
             password: String::new(),
             show_password_modal: false,
+            show_run_complete_modal: false,
             is_running: false,
             tx: None,
             rx: None,
@@ -265,31 +267,29 @@ impl ToolboxApp {
         }
     }
 
+    fn total_staged_count(&self) -> usize {
+        self.staged_count(AppsMode::Install)
+            + self.staged_count(AppsMode::Remove)
+            + self.admin_selected.len()
+    }
+
     fn dock_can_appear(&self) -> bool {
         matches!(self.page, Page::Apps | Page::Recipes)
     }
 
     fn dock_visible(&self) -> bool {
-        !self.is_running
-            && match self.page {
-                Page::Apps => self.staged_count(self.apps_mode) > 0,
-                Page::Recipes => !self.admin_selected.is_empty(),
-                Page::Home | Page::System => false,
-            }
+        !self.is_running && self.dock_can_appear() && self.total_staged_count() > 0
     }
 
     fn dock_count(&self) -> usize {
-        match self.page {
-            Page::Recipes => self.admin_selected.len(),
-            _ => self.staged_count(self.apps_mode),
-        }
+        self.total_staged_count()
     }
 
     fn dock_names(&self) -> Vec<String> {
-        match self.page {
-            Page::Recipes => self.admin_selected_names(),
-            _ => self.active_selected_names(),
-        }
+        let mut names = self.install_selected_names();
+        names.extend(self.remove_selected_names());
+        names.extend(self.admin_selected_names());
+        names
     }
 
     fn selection_locked(&self) -> bool {
@@ -328,13 +328,6 @@ impl ToolboxApp {
                     .map(|task| recipe_display_label(&task.label).to_owned())
             })
             .collect()
-    }
-
-    fn active_selected_names(&self) -> Vec<String> {
-        match self.apps_mode {
-            AppsMode::Install => self.install_selected_names(),
-            AppsMode::Remove => self.remove_selected_names(),
-        }
     }
 
     fn remove_includes_toolbox(&self) -> Option<String> {
@@ -397,14 +390,9 @@ impl ToolboxApp {
     fn selected_tasks(&self) -> Result<Vec<Task>, Vec<String>> {
         let mut tasks = Vec::new();
         let mut errors = Vec::new();
-        match self.page {
-            Page::Recipes => self.push_admin_tasks(&mut tasks, &mut errors),
-            Page::Apps => match self.apps_mode {
-                AppsMode::Install => self.push_install_tasks(&mut tasks, &mut errors),
-                AppsMode::Remove => self.push_remove_tasks(&mut tasks, &mut errors),
-            },
-            Page::Home | Page::System => {}
-        }
+        self.push_install_tasks(&mut tasks, &mut errors);
+        self.push_remove_tasks(&mut tasks, &mut errors);
+        self.push_admin_tasks(&mut tasks, &mut errors);
         if errors.is_empty() {
             Ok(tasks)
         } else {
@@ -412,26 +400,14 @@ impl ToolboxApp {
         }
     }
 
-    #[allow(dead_code)]
     fn clear_all_selections(&mut self) {
         self.install_selected.clear();
         self.remove_selected.clear();
         self.admin_selected.clear();
     }
 
-    fn clear_active_mode_selections(&mut self) {
-        match self.apps_mode {
-            AppsMode::Install => self.install_selected.clear(),
-            AppsMode::Remove => self.remove_selected.clear(),
-        }
-    }
-
     fn clear_dock_selections(&mut self) {
-        match self.page {
-            Page::Recipes => self.admin_selected.clear(),
-            Page::Apps => self.clear_active_mode_selections(),
-            Page::Home | Page::System => {}
-        }
+        self.clear_all_selections();
     }
 
     fn preselect_admin_labels(&mut self, labels: &[&str]) {
@@ -629,35 +605,46 @@ impl ToolboxApp {
         }
 
         if done {
-            self.record_recent_run();
-            self.is_running = false;
-            zeroize_string(&mut self.password);
-            self.tx = None;
-            self.rx = None;
-            self.log.push_str("\n\n[DONE] All tasks finished.");
-            self.log_revision = self.log_revision.saturating_add(1);
+            self.finish_run();
         }
     }
 
+    fn finish_run(&mut self) {
+        self.record_recent_run();
+        self.clear_all_selections();
+        self.is_running = false;
+        zeroize_string(&mut self.password);
+        self.tx = None;
+        self.rx = None;
+        self.log.push_str("\n\n[DONE] All tasks finished.");
+        self.log_revision = self.log_revision.saturating_add(1);
+        self.show_run_complete_modal = true;
+    }
+
     fn record_recent_run(&mut self) {
-        let (kind, names) = match self.page {
-            Page::Recipes => ("Recipe", self.admin_selected_names()),
-            Page::Apps if self.apps_mode == AppsMode::Remove => {
-                ("Remove", self.remove_selected_names())
-            }
-            Page::Apps => ("Install", self.install_selected_names()),
-            Page::Home | Page::System => return,
-        };
-        if names.is_empty() {
-            return;
+        let mut entries = Vec::new();
+        let install = self.install_selected_names();
+        if !install.is_empty() {
+            entries.push(("Install", install));
         }
-        self.recent_runs.insert(
-            0,
-            RecentRun {
-                kind: kind.to_owned(),
-                summary: truncated_names(&names, 48),
-            },
-        );
+        let remove = self.remove_selected_names();
+        if !remove.is_empty() {
+            entries.push(("Remove", remove));
+        }
+        let recipes = self.admin_selected_names();
+        if !recipes.is_empty() {
+            entries.push(("Recipe", recipes));
+        }
+        // Insert in reverse so Install appears above Remove/Recipe for a mixed run.
+        for (kind, names) in entries.into_iter().rev() {
+            self.recent_runs.insert(
+                0,
+                RecentRun {
+                    kind: kind.to_owned(),
+                    summary: truncated_names(&names, 48),
+                },
+            );
+        }
         self.recent_runs.truncate(8);
     }
 
@@ -1220,67 +1207,49 @@ impl ToolboxApp {
     }
 
     fn modal_count_line(&self) -> String {
-        if self.page == Page::Recipes {
-            let n = self.admin_selected.len();
-            return if n == 1 {
-                "This will run 1 recipe.".to_owned()
-            } else {
-                format!("This will run {n} recipes.")
-            };
+        let mut parts = Vec::new();
+        let install = self.install_selected.len();
+        let remove = self.remove_selected.len();
+        let recipes = self.admin_selected.len();
+        match install {
+            0 => {}
+            1 => parts.push("install 1 app".to_owned()),
+            n => parts.push(format!("install {n} apps")),
         }
-        let n = self.staged_count(self.apps_mode);
-        match self.apps_mode {
-            AppsMode::Install if n == 1 => "This will install 1 app.".to_owned(),
-            AppsMode::Install => format!("This will install {n} apps."),
-            AppsMode::Remove if n == 1 => "This will remove 1 app.".to_owned(),
-            AppsMode::Remove => format!("This will remove {n} apps."),
+        match remove {
+            0 => {}
+            1 => parts.push("remove 1 app".to_owned()),
+            n => parts.push(format!("remove {n} apps")),
+        }
+        match recipes {
+            0 => {}
+            1 => parts.push("run 1 recipe".to_owned()),
+            n => parts.push(format!("run {n} recipes")),
+        }
+        match parts.as_slice() {
+            [] => "Nothing is staged.".to_owned(),
+            [only] => format!("This will {only}."),
+            [a, b] => format!("This will {a} and {b}."),
+            [a, b, c] => format!("This will {a}, {b}, and {c}."),
+            _ => format!("This will {}.", parts.join(", ")),
         }
     }
 
     fn review_groups(&self) -> Vec<(&'static str, Vec<String>)> {
-        if self.page == Page::Recipes {
-            let recipes = self.admin_selected_names();
-            return if recipes.is_empty() {
-                Vec::new()
-            } else {
-                vec![("Recipes", recipes)]
-            };
-        }
-        let install = if self.apps_mode == AppsMode::Install {
-            self.install_selected_names()
-        } else {
-            Vec::new()
-        };
-        let remove = if self.apps_mode == AppsMode::Remove {
-            self.remove_selected_names()
-        } else {
-            Vec::new()
-        };
         let mut groups = Vec::new();
+        let install = self.install_selected_names();
         if !install.is_empty() {
             groups.push(("Install", install));
         }
+        let remove = self.remove_selected_names();
         if !remove.is_empty() {
             groups.push(("Remove", remove));
         }
+        let recipes = self.admin_selected_names();
+        if !recipes.is_empty() {
+            groups.push(("Recipes", recipes));
+        }
         groups
-    }
-
-    fn other_mode_staged_note(&self) -> Option<String> {
-        if self.page != Page::Apps {
-            return None;
-        }
-        match self.apps_mode {
-            AppsMode::Install if !self.remove_selected.is_empty() => Some(format!(
-                "{} also staged in Remove. Switch to Remove to run those.",
-                self.remove_selected.len()
-            )),
-            AppsMode::Remove if !self.install_selected.is_empty() => Some(format!(
-                "{} also staged in Install. Switch to Install to run those.",
-                self.install_selected.len()
-            )),
-            _ => None,
-        }
     }
 
     fn run_dock(&mut self, ctx: &Context) {
@@ -1430,10 +1399,7 @@ impl ToolboxApp {
         let mut open = true;
         let count_line = self.modal_count_line();
         let groups = self.review_groups();
-        let other_note = self.other_mode_staged_note();
-        let toolbox = (self.apps_mode == AppsMode::Remove)
-            .then(|| self.remove_includes_toolbox())
-            .flatten();
+        let toolbox = self.remove_includes_toolbox();
 
         egui::Window::new("Review & Run")
             .collapsible(false)
@@ -1490,10 +1456,6 @@ impl ToolboxApp {
                             }
                         });
                 }
-                if let Some(note) = &other_note {
-                    ui.add_space(8.0);
-                    ui.label(RichText::new(note).color(palette.muted));
-                }
                 ui.add_space(12.0);
                 ui.label(RichText::new("Sudo password").color(palette.muted).strong());
                 ui.add_space(4.0);
@@ -1543,6 +1505,67 @@ impl ToolboxApp {
             self.show_password_modal = false;
         }
     }
+
+    fn run_complete_modal(&mut self, ctx: &Context) {
+        if !self.show_run_complete_modal {
+            return;
+        }
+        let palette = self.palette();
+
+        if ctx.input(|input| input.key_pressed(Key::Escape) || input.key_pressed(Key::Enter)) {
+            self.acknowledge_run_complete();
+            return;
+        }
+
+        let mut open = true;
+        egui::Window::new("Run complete")
+            .collapsible(false)
+            .resizable(false)
+            .title_bar(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .open(&mut open)
+            .frame(
+                Frame::new()
+                    .fill(palette.modal_fill)
+                    .stroke(Stroke::new(1.0_f32, palette.border_strong))
+                    .inner_margin(18.0)
+                    .corner_radius(12.0),
+            )
+            .show(ctx, |ui| {
+                ui.set_min_width(280.0);
+                ui.label(
+                    RichText::new("Run complete")
+                        .font(FontId::proportional(18.0))
+                        .color(palette.modal_text)
+                        .strong(),
+                );
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new("All staged tasks finished. Review the Run drawer for details.")
+                        .color(palette.modal_text),
+                );
+                ui.add_space(14.0);
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui
+                        .add(
+                            Button::new(RichText::new("OK").color(palette.cta_text).strong())
+                                .fill(palette.cta_fill)
+                                .stroke(Stroke::new(1.0_f32, palette.cta_fill)),
+                        )
+                        .clicked()
+                    {
+                        self.acknowledge_run_complete();
+                    }
+                });
+            });
+        if !open {
+            self.acknowledge_run_complete();
+        }
+    }
+
+    fn acknowledge_run_complete(&mut self) {
+        self.show_run_complete_modal = false;
+    }
 }
 
 impl eframe::App for ToolboxApp {
@@ -1587,6 +1610,7 @@ impl eframe::App for ToolboxApp {
         let ctx = ui.ctx().clone();
         self.run_dock(&ctx);
         self.sudo_modal(&ctx);
+        self.run_complete_modal(&ctx);
     }
 }
 
@@ -2779,6 +2803,7 @@ mod tests {
             log: String::new(),
             password: String::new(),
             show_password_modal: false,
+            show_run_complete_modal: false,
             is_running: false,
             tx: None,
             rx: None,
@@ -2838,52 +2863,44 @@ mod tests {
     }
 
     #[test]
-    fn run_queue_uses_active_apps_mode_only() {
+    fn run_queue_includes_all_staged_selections() {
         let mut app = test_app();
         app.install_selected.insert(0);
         app.remove_selected.insert(0);
         app.admin_selected.insert(0);
 
-        app.apps_mode = AppsMode::Install;
-        assert_eq!(app.staged_count(app.apps_mode), 1);
-        assert_eq!(app.modal_count_line(), "This will install 1 app.");
-        let tasks = app.selected_tasks().expect("install tasks");
-        assert_eq!(tasks.len(), 1);
+        assert_eq!(app.total_staged_count(), 3);
+        assert_eq!(
+            app.modal_count_line(),
+            "This will install 1 app, remove 1 app, and run 1 recipe."
+        );
+        let tasks = app.selected_tasks().expect("combined tasks");
+        assert_eq!(tasks.len(), 3);
         assert_eq!(tasks[0].description, "Installing Firefox");
         assert_eq!(tasks[0].command.last().map(String::as_str), Some("install"));
-
-        app.apps_mode = AppsMode::Remove;
-        assert_eq!(app.staged_count(app.apps_mode), 1);
-        assert_eq!(app.modal_count_line(), "This will remove 1 app.");
-        let tasks = app.selected_tasks().expect("remove tasks");
-        assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks[0].description, "Removing htop");
-        assert_eq!(tasks[0].command.last().map(String::as_str), Some("remove"));
+        assert_eq!(tasks[1].description, "Removing htop");
+        assert_eq!(tasks[1].command.last().map(String::as_str), Some("remove"));
+        assert_eq!(tasks[2].description, "Running Update System");
         assert!(app.install_selected.contains(&0));
+        assert!(app.remove_selected.contains(&0));
+        assert!(app.admin_selected.contains(&0));
     }
 
     #[test]
-    fn review_lists_active_mode_names_grouped() {
+    fn review_lists_all_staged_names_grouped() {
         let mut app = test_app();
         app.install_selected.insert(0);
         app.install_selected.insert(1);
         app.remove_selected.insert(0);
+        app.admin_selected.insert(0);
 
-        app.apps_mode = AppsMode::Install;
         assert_eq!(
             app.review_groups(),
-            vec![("Install", vec!["Firefox".into(), "VLC".into()])]
-        );
-        assert_eq!(
-            app.other_mode_staged_note().as_deref(),
-            Some("1 also staged in Remove. Switch to Remove to run those.")
-        );
-
-        app.apps_mode = AppsMode::Remove;
-        assert_eq!(app.review_groups(), vec![("Remove", vec!["htop".into()])]);
-        assert_eq!(
-            app.other_mode_staged_note().as_deref(),
-            Some("2 also staged in Install. Switch to Install to run those.")
+            vec![
+                ("Install", vec!["Firefox".into(), "VLC".into()]),
+                ("Remove", vec!["htop".into()]),
+                ("Recipes", vec!["Update System".into()]),
+            ]
         );
         assert!(app.remove_includes_toolbox().is_none());
         app.remove_selected.insert(1);
@@ -2896,7 +2913,7 @@ mod tests {
         let groups = src
             .split("fn review_groups")
             .nth(1)
-            .and_then(|rest| rest.split("fn other_mode_staged_note").next())
+            .and_then(|rest| rest.split("fn run_dock").next())
             .expect("review_groups body");
         assert!(groups.contains("\"Install\""));
         assert!(groups.contains("\"Remove\""));
@@ -2909,6 +2926,7 @@ mod tests {
         assert!(modal.contains("Review & Run"));
         assert!(modal.contains("review_groups"));
         assert!(modal.contains("sudo_name_list"));
+        assert!(!modal.contains("other_mode_staged_note"));
         let name_list = modal.find("sudo_name_list").expect("name list");
         let password = modal.find("Sudo password").expect("password label");
         assert!(
@@ -2936,10 +2954,12 @@ mod tests {
         assert!(app.remove_selected.contains(&0));
         assert_eq!(app.staged_count(AppsMode::Install), 1);
         assert_eq!(app.staged_count(AppsMode::Remove), 1);
+        assert_eq!(app.total_staged_count(), 3);
+        assert!(app.dock_visible());
 
         app.apps_mode = AppsMode::Install;
         assert!(app.remove_selected.contains(&0));
-        assert_eq!(app.staged_count(app.apps_mode), 1);
+        assert_eq!(app.dock_count(), 3);
 
         app.switch_page(Page::Home);
         assert!(app.install_selected.contains(&0));
@@ -2948,7 +2968,7 @@ mod tests {
     }
 
     #[test]
-    fn dock_clear_only_clears_active_mode() {
+    fn dock_clear_clears_all_staged_selections() {
         let mut app = test_app();
         app.apps_mode = AppsMode::Install;
         app.install_selected.insert(0);
@@ -2956,17 +2976,12 @@ mod tests {
         app.remove_selected.insert(0);
         app.admin_selected.insert(0);
 
-        app.clear_active_mode_selections();
-        assert!(app.install_selected.is_empty());
-        assert!(app.remove_selected.contains(&0));
-        assert!(app.admin_selected.contains(&0));
-        assert_eq!(app.staged_count(AppsMode::Remove), 1);
-        assert!(!app.dock_visible());
-
-        app.apps_mode = AppsMode::Remove;
+        assert_eq!(app.dock_count(), 4);
         assert!(app.dock_visible());
-        app.clear_active_mode_selections();
+        app.clear_dock_selections();
+        assert!(app.install_selected.is_empty());
         assert!(app.remove_selected.is_empty());
+        assert!(app.admin_selected.is_empty());
         assert!(!app.dock_visible());
     }
 
@@ -2982,21 +2997,38 @@ mod tests {
         app.is_running = false;
         app.switch_page(Page::System);
         assert!(!app.dock_visible());
+        // Selections on another mode still surface the dock while on Apps/Recipes.
+        app.switch_page(Page::Apps);
+        app.apps_mode = AppsMode::Install;
+        app.install_selected.clear();
+        app.remove_selected.insert(0);
+        assert!(app.dock_visible());
+        assert_eq!(app.dock_count(), 1);
     }
 
     #[test]
-    fn run_freezes_selections_instead_of_clearing_them() {
+    fn run_freezes_selections_while_running_then_clears_on_finish() {
         let mut app = test_app();
         app.install_selected.insert(0);
         app.remove_selected.insert(0);
+        app.admin_selected.insert(0);
         app.is_running = true;
         assert!(app.selection_locked());
         assert!(app.install_selected.contains(&0));
         assert!(app.remove_selected.contains(&0));
-        app.clear_all_selections();
+        assert!(app.admin_selected.contains(&0));
+
+        app.finish_run();
+        assert!(!app.is_running);
         assert!(app.install_selected.is_empty());
         assert!(app.remove_selected.is_empty());
         assert!(app.admin_selected.is_empty());
+        assert!(!app.dock_visible());
+        assert!(app.show_run_complete_modal);
+        assert_eq!(app.recent_runs.len(), 3);
+
+        app.acknowledge_run_complete();
+        assert!(!app.show_run_complete_modal);
     }
 
     #[test]
@@ -3205,18 +3237,24 @@ mod tests {
         app.admin_selected.insert(8);
 
         assert!(app.dock_visible());
-        assert_eq!(app.dock_count(), 2);
-        assert_eq!(app.modal_count_line(), "This will run 2 recipes.");
+        assert_eq!(app.dock_count(), 3);
+        assert_eq!(
+            app.modal_count_line(),
+            "This will install 1 app and run 2 recipes."
+        );
         assert_eq!(
             app.review_groups(),
-            vec![("Recipes", vec!["Update System".into(), "Fastfetch".into()])]
+            vec![
+                ("Install", vec!["Firefox".into()]),
+                ("Recipes", vec!["Update System".into(), "Fastfetch".into()]),
+            ]
         );
-        assert!(app.other_mode_staged_note().is_none());
 
-        let tasks = app.selected_tasks().expect("recipe tasks");
-        assert_eq!(tasks.len(), 2);
+        let tasks = app.selected_tasks().expect("combined tasks");
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks[0].description, "Installing Firefox");
         assert!(
-            tasks
+            tasks[1..]
                 .iter()
                 .all(|task| task.description.starts_with("Running "))
         );
@@ -3224,7 +3262,7 @@ mod tests {
 
         app.clear_dock_selections();
         assert!(app.admin_selected.is_empty());
-        assert!(app.install_selected.contains(&0));
+        assert!(app.install_selected.is_empty());
         assert!(!app.dock_visible());
 
         app.admin_selected.insert(5);
@@ -3373,10 +3411,12 @@ mod tests {
         assert_eq!(app.recent_runs[0].kind, "Install");
         assert!(app.recent_runs[0].summary.contains("Firefox"));
 
-        app.page = Page::Recipes;
         app.admin_selected.insert(0);
+        app.remove_selected.insert(0);
         app.record_recent_run();
-        assert_eq!(app.recent_runs[0].kind, "Recipe");
-        assert_eq!(app.recent_runs.len(), 2);
+        assert_eq!(app.recent_runs[0].kind, "Install");
+        assert_eq!(app.recent_runs[1].kind, "Remove");
+        assert_eq!(app.recent_runs[2].kind, "Recipe");
+        assert_eq!(app.recent_runs.len(), 4);
     }
 }

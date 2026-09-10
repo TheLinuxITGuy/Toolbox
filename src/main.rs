@@ -14,16 +14,15 @@ use std::{
 
 use eframe::egui::{
     self, Align, Align2, Area, Button, CentralPanel, Color32, Context, FontData, FontDefinitions,
-    FontFamily, FontId, Frame, Grid, Id, Key, Layout, Order, Painter, Panel, Pos2, Rect, RichText,
-    ScrollArea, Sense, Stroke, StrokeKind, TextEdit, TextureHandle, TextureOptions, Ui, Vec2, pos2,
-    vec2,
+    FontFamily, FontId, Frame, Id, Key, Layout, Order, Painter, Panel, Pos2, Rect, RichText,
+    ScrollArea, Sense, Stroke, StrokeKind, TextEdit, TextureHandle, TextureOptions, Ui, pos2, vec2,
 };
 
 use catalog::{AdminTask, AppEntry, CatalogLoad, Task, admin_tasks, find_base_dir, load_apps};
 use runner::{RunnerMessage, run_tasks};
 use system::{
     RemovableApp, RemovableSource, command_output, detect_package_manager, distro_name,
-    env_or_unknown, scan_removable_apps, strip_ansi, uptime, uptime_compact,
+    env_or_unknown, scan_removable_apps, strip_ansi, uptime_compact, uptime_prose,
 };
 use theme::{Palette, ThemeMode};
 use validate::{is_exec_name, is_label, zeroize_string};
@@ -114,6 +113,8 @@ const INTENT_HEIGHT: f32 = 148.0;
 const GLANCE_HEIGHT: f32 = 80.0;
 const RECIPE_CARD_HEIGHT: f32 = 148.0;
 const RECIPE_PIP: f32 = 14.0;
+const DETAIL_ROW_HEIGHT: f32 = 44.0;
+const DETAIL_LABEL_WIDTH: f32 = 200.0;
 const TITLE_SIZE: f32 = 26.0;
 const FRESH_SETUP_LABELS: &[&str] = &["Update System", "Fastfetch"];
 const LAPTOP_POWER_LABELS: &[&str] = &["TLP (Laptops)", "Powertop"];
@@ -959,22 +960,12 @@ impl ToolboxApp {
             ("OS", self.distro_name.clone()),
             ("Host", self.host.clone()),
             ("Kernel", self.kernel.clone()),
-            ("Uptime", uptime()),
+            ("Uptime", uptime_prose()),
             ("Shell", self.shell.clone()),
             ("DE/WM", self.de_wm.clone()),
             ("Package Manager", self.package_manager.clone()),
             ("App Directory", self.base_dir.display().to_string()),
         ]
-    }
-
-    fn copy_system_details(&self, ctx: &Context) {
-        let text = self
-            .system_detail_rows()
-            .into_iter()
-            .map(|(label, value)| format!("{label}: {value}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        ctx.copy_text(text);
     }
 
     fn recipe_groups(&self) -> Vec<(String, Vec<usize>)> {
@@ -988,6 +979,19 @@ impl ToolboxApp {
             } else {
                 groups.push((task.category.clone(), vec![index]));
             }
+        }
+        for (_, items) in &mut groups {
+            items.sort_by_key(|index| {
+                (
+                    recipe_display_rank(
+                        self.admin_tasks
+                            .get(*index)
+                            .map(|task| task.label.as_str())
+                            .unwrap_or(""),
+                    ),
+                    *index,
+                )
+            });
         }
         groups
     }
@@ -1184,15 +1188,17 @@ impl ToolboxApp {
                 ui.add_space(6.0);
                 ui.label(
                     RichText::new(format!(
-                        "{} · {} · {}",
+                        "{} · {} · up {}",
                         self.kernel,
                         self.package_manager,
-                        uptime()
+                        uptime_compact()
                     ))
                     .color(palette.muted),
                 );
                 ui.add_space(20.0);
 
+                section_eyebrow(ui, "Glance", &palette);
+                ui.add_space(10.0);
                 let glance_cols = glance_columns(ui);
                 let glance_width = tile_width(ui, glance_cols);
                 for start in (0..metrics.len()).step_by(glance_cols) {
@@ -1207,32 +1213,9 @@ impl ToolboxApp {
                 }
 
                 ui.add_space(8.0);
-                Frame::new()
-                    .fill(palette.surface)
-                    .stroke(Stroke::new(1.0_f32, palette.border))
-                    .corner_radius(CARD_RADIUS)
-                    .inner_margin(egui::Margin::symmetric(18, 16))
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("Details").color(palette.text).strong());
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ghost_button(ui, "Copy all", &palette).clicked() {
-                                    self.copy_system_details(ui.ctx());
-                                }
-                            });
-                        });
-                        ui.add_space(12.0);
-                        Grid::new("system_info_grid")
-                            .num_columns(2)
-                            .spacing(Vec2::new(28.0, 12.0))
-                            .show(ui, |ui| {
-                                for (label, value) in &rows {
-                                    ui.label(RichText::new(*label).color(palette.muted));
-                                    ui.label(RichText::new(value).color(palette.text));
-                                    ui.end_row();
-                                }
-                            });
-                    });
+                section_eyebrow(ui, "Details", &palette);
+                ui.add_space(10.0);
+                system_details_card(ui, &rows, &palette);
             });
     }
 
@@ -2081,6 +2064,57 @@ fn metric_tile(
     response
 }
 
+fn system_details_card(ui: &mut Ui, rows: &[(&'static str, String)], palette: &Palette) {
+    Frame::new()
+        .fill(palette.surface)
+        .stroke(Stroke::new(1.0_f32, palette.border))
+        .corner_radius(CARD_RADIUS)
+        .inner_margin(egui::Margin::symmetric(0, 6))
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            for (index, (label, value)) in rows.iter().enumerate() {
+                if index > 0 {
+                    let (line, _) =
+                        ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
+                    ui.painter().line_segment(
+                        [
+                            pos2(line.left() + 18.0, line.center().y),
+                            pos2(line.right() - 18.0, line.center().y),
+                        ],
+                        Stroke::new(1.0_f32, palette.border),
+                    );
+                }
+                let (rect, _) = ui.allocate_exact_size(
+                    vec2(ui.available_width(), DETAIL_ROW_HEIGHT),
+                    Sense::hover(),
+                );
+                let painter = ui.painter();
+                painter.text(
+                    pos2(rect.left() + 18.0, rect.center().y),
+                    Align2::LEFT_CENTER,
+                    *label,
+                    FontId::proportional(12.0),
+                    palette.muted,
+                );
+                let value_left = rect.left() + 18.0 + DETAIL_LABEL_WIDTH;
+                let value_width = (rect.right() - 18.0 - value_left).max(24.0);
+                let galley = painter.layout(
+                    value.clone(),
+                    FontId::proportional(13.5),
+                    palette.text,
+                    value_width,
+                );
+                let text_pos = pos2(value_left, rect.center().y - galley.size().y / 2.0);
+                painter
+                    .with_clip_rect(Rect::from_min_size(
+                        pos2(value_left, rect.top()),
+                        vec2(value_width, rect.height()),
+                    ))
+                    .galley(text_pos, galley, palette.text);
+            }
+        });
+}
+
 fn paint_surface_card(painter: &Painter, rect: Rect, hovered: bool, palette: &Palette) {
     painter.rect_filled(
         rect,
@@ -2180,6 +2214,16 @@ fn recipe_chip(label: &str) -> Option<&'static str> {
         "Update System" | "SWAP Fix" => Some("CAUTION"),
         other if other.contains("Debian only") => Some("DEBIAN ONLY"),
         _ => None,
+    }
+}
+
+fn recipe_display_rank(label: &str) -> u8 {
+    match label {
+        "TLP (Laptops)" => 0,
+        "Powertop" => 1,
+        "Enable Bluetooth" => 2,
+        "Disable Bluetooth" => 3,
+        _ => 100,
     }
 }
 
@@ -3245,14 +3289,9 @@ mod tests {
             }
         }
         assert_eq!(admin_tasks().len(), 9);
-        let groups = {
-            let app = {
-                let mut app = test_app();
-                app.admin_tasks = admin_tasks();
-                app
-            };
-            app.recipe_groups()
-        };
+        let mut app = test_app();
+        app.admin_tasks = admin_tasks();
+        let groups = app.recipe_groups();
         assert_eq!(
             groups
                 .iter()
@@ -3260,10 +3299,24 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["Power Management", "System"]
         );
+        let power_labels: Vec<String> = groups[0]
+            .1
+            .iter()
+            .filter_map(|&index| app.admin_tasks.get(index).map(|task| task.label.clone()))
+            .collect();
+        assert_eq!(
+            power_labels,
+            [
+                "TLP (Laptops)",
+                "Powertop",
+                "Enable Bluetooth",
+                "Disable Bluetooth"
+            ]
+        );
     }
 
     #[test]
-    fn system_detail_keeps_live_fields_and_copy_all() {
+    fn system_detail_keeps_live_fields_without_fake_cpu() {
         let app = test_app();
         let rows = app.system_detail_rows();
         assert_eq!(rows[0].0, "OS");
@@ -3282,9 +3335,14 @@ mod tests {
             .nth(1)
             .and_then(|rest| rest.split("fn modal_count_line").next())
             .expect("system_info_page");
-        assert!(system.contains("Copy all"));
-        assert!(system.contains("copy_system_details"));
+        assert!(system.contains("Glance"));
+        assert!(system.contains("Details"));
+        assert!(system.contains("up {}"));
+        assert!(system.contains("system_details_card"));
+        assert!(!system.contains("Copy all"));
+        assert!(!system.contains("copy_system_details"));
         assert!(!system.contains("command_output"));
+        assert!(!system.contains("\"CPU\""));
         assert_eq!(greeting_for_hour(7), "Good morning");
         assert_eq!(greeting_for_hour(13), "Good afternoon");
         assert_eq!(greeting_for_hour(21), "Good evening");

@@ -88,12 +88,12 @@ pub fn env_or_unknown(keys: &[&str]) -> String {
     "Unknown".to_owned()
 }
 
-pub fn uptime() -> String {
-    format_uptime(uptime_parts(), false)
-}
-
 pub fn uptime_compact() -> String {
     format_uptime(uptime_parts(), true)
+}
+
+pub fn uptime_prose() -> String {
+    format_uptime_prose(uptime_parts())
 }
 
 fn uptime_parts() -> Option<(u64, u64, u64)> {
@@ -124,6 +124,30 @@ fn format_uptime(parts: Option<(u64, u64, u64)>, compact: bool) -> String {
         (0, 0) => format!("{minutes}m"),
         (0, _) => format!("{hours}h {minutes}m"),
         _ => format!("{days}d {hours}h {minutes}m"),
+    }
+}
+
+fn format_uptime_prose(parts: Option<(u64, u64, u64)>) -> String {
+    let Some((days, hours, minutes)) = parts else {
+        return "Unknown".to_owned();
+    };
+    match (days, hours) {
+        (0, 0) => unit_phrase(minutes, "minute", "minutes"),
+        (0, _) => unit_phrase(hours, "hour", "hours"),
+        (_, 0) => unit_phrase(days, "day", "days"),
+        _ => format!(
+            "{}, {}",
+            unit_phrase(days, "day", "days"),
+            unit_phrase(hours, "hour", "hours")
+        ),
+    }
+}
+
+fn unit_phrase(count: u64, one: &str, many: &str) -> String {
+    if count == 1 {
+        format!("1 {one}")
+    } else {
+        format!("{count} {many}")
     }
 }
 
@@ -517,6 +541,11 @@ mod tests {
         assert_eq!(format_uptime(Some((0, 0, 9)), true), "9m");
         assert_eq!(format_uptime(Some((2, 4, 12)), false), "2d 4h 12m");
         assert_eq!(format_uptime(None, true), "Unknown");
+        assert_eq!(format_uptime_prose(Some((2, 4, 12))), "2 days, 4 hours");
+        assert_eq!(format_uptime_prose(Some((1, 0, 0))), "1 day");
+        assert_eq!(format_uptime_prose(Some((0, 1, 8))), "1 hour");
+        assert_eq!(format_uptime_prose(Some((0, 0, 1))), "1 minute");
+        assert_eq!(format_uptime_prose(None), "Unknown");
     }
 
     #[test]

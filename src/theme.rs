@@ -26,6 +26,8 @@ pub const ACCENT_LIGHT: Color32 = Color32::from_rgb(0x0D, 0x94, 0x88);
 pub const ACCENT_BRIGHT: Color32 = Color32::from_rgb(0x2D, 0xD4, 0xBF);
 pub const ACCENT_ON_LIGHT: Color32 = Color32::from_rgb(0x04, 0x2F, 0x2E);
 pub const BORDER_LIGHT_BASE: Color32 = Color32::from_rgb(0x0F, 0x17, 0x2A);
+pub const CAUTION: Color32 = Color32::from_rgb(0xFD, 0xBA, 0x74);
+pub const CAUTION_ON: Color32 = Color32::from_rgb(0x1C, 0x14, 0x0A);
 
 const CONFIG_DIR_NAME: &str = "linux-it-guy-toolbox";
 const THEME_FILE_NAME: &str = "theme";
@@ -112,6 +114,8 @@ pub struct Palette {
     pub log_inner: Color32,
     pub log_text: Color32,
     pub surface_hover: Color32,
+    pub caution: Color32,
+    pub caution_on: Color32,
 }
 
 impl Palette {
@@ -153,6 +157,8 @@ impl Palette {
             log_inner: VOID_DARK,
             log_text: TEXT_DARK,
             surface_hover: mix(SURFACE_DARK, ELEVATED_DARK, 0.65),
+            caution: CAUTION,
+            caution_on: CAUTION_ON,
         }
     }
 
@@ -204,6 +210,8 @@ impl Palette {
             log_inner: ELEVATED_LIGHT,
             log_text: TEXT_LIGHT,
             surface_hover: mix(SURFACE_LIGHT, TEXT_LIGHT, 0.06),
+            caution: CAUTION,
+            caution_on: CAUTION_ON,
         }
     }
 
@@ -470,6 +478,8 @@ mod tests {
         assert_eq!(hex(ACCENT_BRIGHT), "#2DD4BF");
         assert_eq!(hex(ACCENT_ON_LIGHT), "#042F2E");
         assert_eq!(hex(BORDER_LIGHT_BASE), "#0F172A");
+        assert_eq!(hex(CAUTION), "#FDBA74");
+        assert_eq!(hex(CAUTION_ON), "#1C140A");
     }
 
     #[test]
@@ -510,6 +520,9 @@ mod tests {
         assert_eq!(palette.border.a(), 18);
         assert_eq!(palette.border_strong.a(), 31);
         assert_eq!(palette.accent_dim.a(), 36);
+        assert_eq!(palette.caution, CAUTION);
+        assert_eq!(palette.caution_on, CAUTION_ON);
+        assert_ne!(palette.caution, palette.cta_fill);
     }
 
     #[test]
@@ -607,6 +620,16 @@ mod tests {
             );
             assert_ne!(palette.tile, palette.void);
             assert_ne!(palette.border, palette.surface);
+            assert!(
+                contrast_ratio(palette.caution_on, palette.caution) >= 4.5,
+                "{:?} caution chip contrast",
+                palette.mode
+            );
+            assert_ne!(
+                palette.caution, palette.cta_fill,
+                "{:?} caution chips must not reuse the CTA fill",
+                palette.mode
+            );
         }
     }
 

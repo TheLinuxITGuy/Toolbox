@@ -1,23 +1,25 @@
 # 🧰 The Linux IT Guy Toolbox
 
-![GitHub Release](https://img.shields.io/github/v/release/TheLinuxITGuy/Toolbox?style=for-the-badge&labelColor=%231A365D&color=%23E9FC12)
-![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TheLinuxITGuy/Toolbox/total?style=for-the-badge&labelColor=%231A365D&color=%23E9FC12)
+![GitHub Release](https://img.shields.io/github/v/release/TheLinuxITGuy/Toolbox?style=for-the-badge&labelColor=%2307080A&color=%235EEAD4)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TheLinuxITGuy/Toolbox/total?style=for-the-badge&labelColor=%2307080A&color=%235EEAD4)
 
 A fast Rust desktop app for installing/removing apps and running Linux admin tasks with one click.
 
-![Preview](Screenshot/Screenshot8.png)
+![Home](Screenshot/lumen/home.png)
 
 > [!NOTE]
 > #### Supported Distros
-> ![Static Badge](https://img.shields.io/badge/Arch-%231A365D?style=for-the-badge&logo=arch%20linux&logoColor=%23E9FC12)
-> ![Static Badge](https://img.shields.io/badge/Debian-%231A365D?style=for-the-badge&logo=debian&logoColor=%23E9FC12)
-> ![Static Badge](https://img.shields.io/badge/Fedora-%231A365D?style=for-the-badge&logo=fedora&logoColor=%23E9FC12)
+> ![Static Badge](https://img.shields.io/badge/Arch-%2307080A?style=for-the-badge&logo=arch%20linux&logoColor=%235EEAD4)
+> ![Static Badge](https://img.shields.io/badge/Debian-%2307080A?style=for-the-badge&logo=debian&logoColor=%235EEAD4)
+> ![Static Badge](https://img.shields.io/badge/Fedora-%2307080A?style=for-the-badge&logo=fedora&logoColor=%235EEAD4)
 
 ## ✨ What It Does
 
-- Install and remove native packages and Flatpak apps from one UI
-- Run system admin tasks (updates, Bluetooth toggle, TLP setup, etc.)
-- Show local system information
+- **Home** dashboard with install/setup intents, a live system glance, and recent runs
+- **Apps** to install or remove native packages and Flatpaks, with a Run Dock when items are staged
+- **Recipes** for one-click admin playbooks (updates, Bluetooth, TLP, Powertop, and more)
+- **System** page with live machine details
+- **Lumen Dark** by default, with a light theme toggle on the rail
 - Works across multiple distros
 
 ## 🚀 Quick Start
@@ -40,11 +42,18 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 ## 📖 Usage
 
-1. **Install tab** → Select native packages or Flatpaks
-2. **Remove tab** → Uninstall apps
-3. **Administration tab** → Run system tasks
-4. Click **Run Selected Tasks** → Enter sudo password
-5. Check the process log for progress
+1. Use the rail: **Home**, **Apps**, **Recipes**, or **System**
+2. On **Apps**, switch **Install** or **Remove**, then stage what you need
+3. On **Recipes**, stage the playbooks you want to run
+4. When the **Run Dock** appears, click **Review & Run**, enter your sudo password, and follow progress in the **Run Drawer** (then Dismiss when you are done)
+
+![Apps](Screenshot/lumen/apps.png)
+
+![Apps with Run Dock](Screenshot/lumen/apps_run_dock.png)
+
+![Recipes](Screenshot/lumen/recipes_run_dock.png)
+
+![System](Screenshot/lumen/system.png)
 
 ## 🔧 Requirements
 

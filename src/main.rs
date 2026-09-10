@@ -23,7 +23,7 @@ use catalog::{AdminTask, AppEntry, CatalogLoad, Task, admin_tasks, find_base_dir
 use runner::{RunnerMessage, run_tasks};
 use system::{
     RemovableApp, RemovableSource, command_output, detect_package_manager, distro_name,
-    env_or_unknown, scan_removable_apps, strip_ansi, uptime,
+    env_or_unknown, scan_removable_apps, strip_ansi, uptime, uptime_compact,
 };
 use theme::{Palette, ThemeMode};
 use validate::{is_exec_name, is_label, zeroize_string};
@@ -110,8 +110,8 @@ const SEARCH_HEIGHT: f32 = 44.0;
 const DOCK_MIN_WIDTH: f32 = 420.0;
 const DOCK_RADIUS: f32 = 20.0;
 const CONTENT_TWO_COL: f32 = 720.0;
-const INTENT_HEIGHT: f32 = 128.0;
-const GLANCE_HEIGHT: f32 = 96.0;
+const INTENT_HEIGHT: f32 = 136.0;
+const GLANCE_HEIGHT: f32 = 88.0;
 const TITLE_SIZE: f32 = 26.0;
 const FRESH_SETUP_LABELS: &[&str] = &["Update System", "Fastfetch"];
 const LAPTOP_POWER_LABELS: &[&str] = &["TLP (Laptops)", "Powertop"];
@@ -941,8 +941,8 @@ impl ToolboxApp {
         [
             ("OS", self.distro_name.clone()),
             ("Kernel", self.kernel.clone()),
-            ("Uptime", uptime()),
-            ("PM", self.package_manager.clone()),
+            ("Uptime", uptime_compact()),
+            ("Packages", self.package_manager.clone()),
         ]
     }
 
@@ -1015,7 +1015,7 @@ impl ToolboxApp {
                     (
                         Glyph::Bolt,
                         "Fresh setup",
-                        "One recipe for a new distro hop — essentials ready.",
+                        "Jump to Recipes for essentials after a distro hop.",
                     ),
                     (
                         Glyph::Briefcase,
@@ -2000,32 +2000,32 @@ fn intent_card(
     let (rect, response) = ui.allocate_exact_size(vec2(width, INTENT_HEIGHT), Sense::click());
     paint_surface_card(ui.painter(), rect, response.hovered(), palette);
 
-    let well = Rect::from_min_size(rect.min + vec2(16.0, 16.0), vec2(36.0, 36.0));
-    ui.painter().rect_filled(well, 10.0, palette.icon_well);
-    paint_glyph(ui.painter(), well.shrink(8.0), glyph, palette.accent);
+    let well = Rect::from_min_size(rect.min + vec2(20.0, 18.0), vec2(40.0, 40.0));
+    ui.painter().rect_filled(well, 12.0, palette.icon_well);
+    paint_glyph(ui.painter(), well.shrink(9.0), glyph, palette.accent);
 
     let painter = ui.painter();
-    let text_left = rect.min.x + 16.0;
-    let text_width = (rect.width() - 32.0).max(24.0);
+    let text_left = rect.min.x + 20.0;
+    let text_width = (rect.width() - 40.0).max(24.0);
     painter.text(
-        pos2(text_left, rect.min.y + 68.0),
-        Align2::LEFT_CENTER,
+        pos2(text_left, rect.min.y + 72.0),
+        Align2::LEFT_TOP,
         title,
         FontId::proportional(15.0),
         palette.text,
     );
     let galley = painter.layout(
         body.to_owned(),
-        FontId::proportional(12.0),
+        FontId::proportional(12.5),
         palette.muted,
         text_width,
     );
     painter
         .with_clip_rect(Rect::from_min_size(
-            pos2(text_left, rect.min.y + 82.0),
-            vec2(text_width, 34.0),
+            pos2(text_left, rect.min.y + 94.0),
+            vec2(text_width, 30.0),
         ))
-        .galley(pos2(text_left, rect.min.y + 82.0), galley, palette.muted);
+        .galley(pos2(text_left, rect.min.y + 94.0), galley, palette.muted);
     response
 }
 
@@ -2046,24 +2046,25 @@ fn metric_tile(
     paint_surface_card(ui.painter(), rect, response.hovered() && clickable, palette);
     let painter = ui.painter();
     painter.text(
-        pos2(rect.min.x + 16.0, rect.min.y + 22.0),
-        Align2::LEFT_CENTER,
+        pos2(rect.min.x + 18.0, rect.min.y + 18.0),
+        Align2::LEFT_TOP,
         label,
         FontId::proportional(11.0),
         palette.muted,
     );
-    painter.text(
-        pos2(rect.min.x + 16.0, rect.min.y + 48.0),
-        Align2::LEFT_CENTER,
-        value,
+    let value_pos = pos2(rect.min.x + 18.0, rect.min.y + 40.0);
+    let galley = painter.layout(
+        value.to_owned(),
         FontId::proportional(20.0),
         palette.text,
+        (rect.width() - 36.0).max(24.0),
     );
-    let bar = Rect::from_min_size(
-        pos2(rect.min.x + 16.0, rect.bottom() - 18.0),
-        vec2(36.0, 3.0),
-    );
-    painter.rect_filled(bar, 2.0, palette.accent);
+    painter
+        .with_clip_rect(Rect::from_min_size(
+            value_pos,
+            vec2((rect.width() - 36.0).max(24.0), 36.0),
+        ))
+        .galley(value_pos, galley, palette.text);
     response
 }
 
@@ -3068,7 +3069,7 @@ mod tests {
         assert_eq!(metrics[0].0, "OS");
         assert_eq!(metrics[1].0, "Kernel");
         assert_eq!(metrics[2].0, "Uptime");
-        assert_eq!(metrics[3].0, "PM");
+        assert_eq!(metrics[3].0, "Packages");
         assert_eq!(metrics[0].1, "Debian");
         assert_eq!(metrics[1].1, "6.12.0-test");
         assert_eq!(metrics[3].1, "apt-get");
@@ -3087,6 +3088,9 @@ mod tests {
         assert!(home.contains("go_fresh_setup"));
         assert!(home.contains("go_laptop_power"));
         assert!(home.contains("go_system"));
+        assert!(home.contains("Jump to Recipes for essentials after a distro hop."));
+        assert!(home.contains("Browse the catalog and stage what you need."));
+        assert!(home.contains("TLP + Powertop tuned so the battery lasts."));
     }
 
     #[test]

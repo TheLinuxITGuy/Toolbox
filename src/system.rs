@@ -88,26 +88,66 @@ pub fn env_or_unknown(keys: &[&str]) -> String {
     "Unknown".to_owned()
 }
 
-pub fn uptime() -> String {
-    let Ok(contents) = fs::read_to_string("/proc/uptime") else {
-        return "Unknown".to_owned();
-    };
-    let Some(first) = contents.split_whitespace().next() else {
-        return "Unknown".to_owned();
-    };
-    let Ok(seconds) = first.parse::<f64>() else {
-        return "Unknown".to_owned();
-    };
+pub fn uptime_compact() -> String {
+    format_uptime(uptime_parts(), true)
+}
 
+pub fn uptime_prose() -> String {
+    format_uptime_prose(uptime_parts())
+}
+
+fn uptime_parts() -> Option<(u64, u64, u64)> {
+    let contents = fs::read_to_string("/proc/uptime").ok()?;
+    let first = contents.split_whitespace().next()?;
+    let seconds = first.parse::<f64>().ok()?;
     let total = seconds as u64;
-    let days = total / 86_400;
-    let hours = (total % 86_400) / 3_600;
-    let minutes = (total % 3_600) / 60;
+    Some((
+        total / 86_400,
+        (total % 86_400) / 3_600,
+        (total % 3_600) / 60,
+    ))
+}
 
+fn format_uptime(parts: Option<(u64, u64, u64)>, compact: bool) -> String {
+    let Some((days, hours, minutes)) = parts else {
+        return "Unknown".to_owned();
+    };
+    if compact {
+        return match (days, hours) {
+            (0, 0) => format!("{minutes}m"),
+            (0, _) => format!("{hours}h"),
+            (_, 0) => format!("{days}d"),
+            _ => format!("{days}d {hours}h"),
+        };
+    }
     match (days, hours) {
         (0, 0) => format!("{minutes}m"),
         (0, _) => format!("{hours}h {minutes}m"),
         _ => format!("{days}d {hours}h {minutes}m"),
+    }
+}
+
+fn format_uptime_prose(parts: Option<(u64, u64, u64)>) -> String {
+    let Some((days, hours, minutes)) = parts else {
+        return "Unknown".to_owned();
+    };
+    match (days, hours) {
+        (0, 0) => unit_phrase(minutes, "minute", "minutes"),
+        (0, _) => unit_phrase(hours, "hour", "hours"),
+        (_, 0) => unit_phrase(days, "day", "days"),
+        _ => format!(
+            "{}, {}",
+            unit_phrase(days, "day", "days"),
+            unit_phrase(hours, "hour", "hours")
+        ),
+    }
+}
+
+fn unit_phrase(count: u64, one: &str, many: &str) -> String {
+    if count == 1 {
+        format!("1 {one}")
+    } else {
+        format!("{count} {many}")
     }
 }
 
@@ -492,6 +532,20 @@ mod tests {
     #[test]
     fn trim_release_value_strips_quotes() {
         assert_eq!(trim_release_value("\"Arch Linux\""), "Arch Linux");
+    }
+
+    #[test]
+    fn compact_uptime_matches_glance_mock_shape() {
+        assert_eq!(format_uptime(Some((2, 4, 12)), true), "2d 4h");
+        assert_eq!(format_uptime(Some((0, 3, 12)), true), "3h");
+        assert_eq!(format_uptime(Some((0, 0, 9)), true), "9m");
+        assert_eq!(format_uptime(Some((2, 4, 12)), false), "2d 4h 12m");
+        assert_eq!(format_uptime(None, true), "Unknown");
+        assert_eq!(format_uptime_prose(Some((2, 4, 12))), "2 days, 4 hours");
+        assert_eq!(format_uptime_prose(Some((1, 0, 0))), "1 day");
+        assert_eq!(format_uptime_prose(Some((0, 1, 8))), "1 hour");
+        assert_eq!(format_uptime_prose(Some((0, 0, 1))), "1 minute");
+        assert_eq!(format_uptime_prose(None), "Unknown");
     }
 
     #[test]

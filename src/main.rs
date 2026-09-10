@@ -107,13 +107,13 @@ const CARD_GAP: f32 = 12.0;
 const CARD_RADIUS: f32 = 12.0;
 const CHECK_SIZE: f32 = 22.0;
 const SEARCH_HEIGHT: f32 = 44.0;
-const DOCK_MIN_WIDTH: f32 = 420.0;
-const DOCK_RADIUS: f32 = 20.0;
+const DOCK_MIN_WIDTH: f32 = 520.0;
+const DOCK_RADIUS: f32 = 22.0;
 const CONTENT_TWO_COL: f32 = 720.0;
-const INTENT_HEIGHT: f32 = 136.0;
-const GLANCE_HEIGHT: f32 = 88.0;
+const INTENT_HEIGHT: f32 = 148.0;
+const GLANCE_HEIGHT: f32 = 80.0;
 const RECIPE_CARD_HEIGHT: f32 = 148.0;
-const RECIPE_PIP: f32 = 16.0;
+const RECIPE_PIP: f32 = 14.0;
 const TITLE_SIZE: f32 = 26.0;
 const FRESH_SETUP_LABELS: &[&str] = &["Update System", "Fastfetch"];
 const LAPTOP_POWER_LABELS: &[&str] = &["TLP (Laptops)", "Powertop"];
@@ -317,9 +317,16 @@ impl ToolboxApp {
     }
 
     fn admin_selected_names(&self) -> Vec<String> {
-        Self::selected_labels(&self.admin_selected, |index| {
-            self.admin_tasks.get(index).map(|task| task.label.clone())
-        })
+        let mut indices: Vec<usize> = self.admin_selected.iter().copied().collect();
+        indices.sort_unstable();
+        indices
+            .into_iter()
+            .filter_map(|index| {
+                self.admin_tasks
+                    .get(index)
+                    .map(|task| recipe_display_label(&task.label).to_owned())
+            })
+            .collect()
     }
 
     fn active_selected_names(&self) -> Vec<String> {
@@ -1002,7 +1009,7 @@ impl ToolboxApp {
                         status_pill(ui, "System up to date", &palette);
                     });
                 });
-                ui.add_space(8.0);
+                ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     let (dot, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
                     ui.painter()
@@ -1010,7 +1017,7 @@ impl ToolboxApp {
                     ui.add_space(4.0);
                     ui.label(RichText::new(self.ready_line()).color(palette.muted));
                 });
-                ui.add_space(22.0);
+                ui.add_space(20.0);
 
                 let intents = [
                     (
@@ -1300,7 +1307,7 @@ impl ToolboxApp {
 
         let palette = self.palette();
         let count = self.dock_count();
-        let names = truncated_names(&self.dock_names(), 42);
+        let names = truncated_names(&self.dock_names(), 56);
 
         let mut clear = false;
         let mut review = false;
@@ -1314,7 +1321,7 @@ impl ToolboxApp {
                     .fill(palette.surface)
                     .stroke(Stroke::new(1.0_f32, palette.border_strong))
                     .corner_radius(DOCK_RADIUS)
-                    .inner_margin(egui::Margin::symmetric(18, 12))
+                    .inner_margin(egui::Margin::symmetric(20, 14))
                     .shadow(egui::Shadow {
                         offset: [0, 8],
                         blur: 24,
@@ -1324,24 +1331,20 @@ impl ToolboxApp {
                     .show(ui, |ui| {
                         ui.set_min_width(DOCK_MIN_WIDTH);
                         ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 12.0;
+                            ui.spacing_mut().item_spacing.x = 16.0;
                             ui.vertical(|ui| {
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing.x = 6.0;
-                                    ui.label(
-                                        RichText::new(format!("{count}"))
-                                            .color(palette.accent)
-                                            .strong(),
-                                    );
-                                    ui.label(RichText::new("staged").color(palette.text).strong());
-                                });
+                                ui.label(
+                                    RichText::new(format!("{count} staged"))
+                                        .color(palette.accent)
+                                        .strong(),
+                                );
                                 ui.label(RichText::new(names).color(palette.muted));
                             });
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if cta_button(ui, "Review & Run  →", true, &palette).clicked() {
+                                if cta_button(ui, "Review & Run →", true, &palette).clicked() {
                                     review = true;
                                 }
-                                ui.add_space(8.0);
+                                ui.add_space(10.0);
                                 if ghost_button(ui, "Clear", &palette).clicked() {
                                     clear = true;
                                 }
@@ -2010,15 +2013,15 @@ fn intent_card(
     let (rect, response) = ui.allocate_exact_size(vec2(width, INTENT_HEIGHT), Sense::click());
     paint_surface_card(ui.painter(), rect, response.hovered(), palette);
 
-    let well = Rect::from_min_size(rect.min + vec2(20.0, 18.0), vec2(40.0, 40.0));
+    let well = Rect::from_min_size(rect.min + vec2(18.0, 18.0), vec2(40.0, 40.0));
     ui.painter().rect_filled(well, 12.0, palette.icon_well);
     paint_glyph(ui.painter(), well.shrink(9.0), glyph, palette.accent);
 
     let painter = ui.painter();
-    let text_left = rect.min.x + 20.0;
-    let text_width = (rect.width() - 40.0).max(24.0);
+    let text_left = rect.min.x + 18.0;
+    let text_width = (rect.width() - 36.0).max(24.0);
     painter.text(
-        pos2(text_left, rect.min.y + 72.0),
+        pos2(text_left, rect.min.y + 70.0),
         Align2::LEFT_TOP,
         title,
         FontId::proportional(15.0),
@@ -2032,10 +2035,10 @@ fn intent_card(
     );
     painter
         .with_clip_rect(Rect::from_min_size(
-            pos2(text_left, rect.min.y + 94.0),
-            vec2(text_width, 30.0),
+            pos2(text_left, rect.min.y + 92.0),
+            vec2(text_width, 38.0),
         ))
-        .galley(pos2(text_left, rect.min.y + 94.0), galley, palette.muted);
+        .galley(pos2(text_left, rect.min.y + 92.0), galley, palette.muted);
     response
 }
 
@@ -2056,23 +2059,23 @@ fn metric_tile(
     paint_surface_card(ui.painter(), rect, response.hovered() && clickable, palette);
     let painter = ui.painter();
     painter.text(
-        pos2(rect.min.x + 18.0, rect.min.y + 18.0),
+        pos2(rect.min.x + 16.0, rect.min.y + 14.0),
         Align2::LEFT_TOP,
         label,
         FontId::proportional(11.0),
         palette.muted,
     );
-    let value_pos = pos2(rect.min.x + 18.0, rect.min.y + 40.0);
+    let value_pos = pos2(rect.min.x + 16.0, rect.min.y + 34.0);
     let galley = painter.layout(
         value.to_owned(),
-        FontId::proportional(20.0),
+        FontId::proportional(22.0),
         palette.text,
-        (rect.width() - 36.0).max(24.0),
+        (rect.width() - 32.0).max(24.0),
     );
     painter
         .with_clip_rect(Rect::from_min_size(
             value_pos,
-            vec2((rect.width() - 36.0).max(24.0), 36.0),
+            vec2((rect.width() - 32.0).max(24.0), 34.0),
         ))
         .galley(value_pos, galley, palette.text);
     response
@@ -2230,12 +2233,12 @@ fn paint_warm_chip(painter: &Painter, left_center: Pos2, label: &str, palette: &
 }
 
 fn status_pill(ui: &mut Ui, label: &str, palette: &Palette) {
-    let width = (label.len() as f32 * 7.0 + 20.0).clamp(88.0, 160.0);
-    let (rect, _) = ui.allocate_exact_size(vec2(width, 26.0), Sense::hover());
-    ui.painter().rect_filled(rect, 13.0, palette.surface);
+    let width = (label.len() as f32 * 6.6 + 22.0).clamp(88.0, 168.0);
+    let (rect, _) = ui.allocate_exact_size(vec2(width, 24.0), Sense::hover());
+    ui.painter().rect_filled(rect, 12.0, palette.surface);
     ui.painter().rect_stroke(
         rect,
-        13.0,
+        12.0,
         Stroke::new(1.0_f32, palette.border),
         StrokeKind::Inside,
     );
@@ -2243,7 +2246,7 @@ fn status_pill(ui: &mut Ui, label: &str, palette: &Palette) {
         rect.center(),
         Align2::CENTER_CENTER,
         label,
-        FontId::proportional(11.5),
+        FontId::proportional(11.0),
         palette.muted,
     );
 }
@@ -2333,8 +2336,8 @@ fn cta_button(ui: &mut Ui, label: &str, enabled: bool, palette: &Palette) -> egu
         Button::new(RichText::new(label).color(palette.cta_text).strong())
             .fill(palette.cta_fill)
             .stroke(Stroke::new(1.0_f32, palette.cta_fill))
-            .corner_radius(12.0)
-            .min_size(vec2(132.0, 34.0)),
+            .corner_radius(16.0)
+            .min_size(vec2(148.0, 36.0)),
     )
 }
 
@@ -3052,6 +3055,10 @@ mod tests {
         assert_eq!(RAIL_WIDTH, 68.0);
         assert_eq!(CARD_HEIGHT, 164.0);
         assert_eq!(TITLE_SIZE, 26.0);
+        assert_eq!(INTENT_HEIGHT, 148.0);
+        assert_eq!(GLANCE_HEIGHT, 80.0);
+        assert_eq!(DOCK_MIN_WIDTH, 520.0);
+        assert!(src.contains("{count} staged"));
         assert!(src.contains("fn home_page"));
         assert!(src.contains("fn recipes_page"));
         assert!(!src.contains("fn stub_page"));
@@ -3094,18 +3101,22 @@ mod tests {
 
         app.go_fresh_setup();
         assert_eq!(app.page, Page::Recipes);
-        let selected = app.admin_selected_names();
-        assert!(selected.contains(&"Update System".to_owned()));
-        assert!(selected.contains(&"Fastfetch".to_owned()));
-        assert_eq!(selected.len(), 2);
+        assert_eq!(
+            app.admin_selected_names(),
+            vec!["Update System".to_owned(), "Fastfetch".to_owned()]
+        );
         assert!(app.dock_visible());
 
         app.go_laptop_power();
         let selected = app.admin_selected_names();
-        assert!(selected.contains(&"TLP (Laptops)".to_owned()));
-        assert!(selected.contains(&"Powertop".to_owned()));
-        assert_eq!(selected.len(), 2);
-        assert!(!selected.contains(&"Update System".to_owned()));
+        assert_eq!(
+            selected,
+            vec!["TLP (Laptops)".to_owned(), "Powertop".to_owned()]
+        );
+        assert_eq!(
+            truncated_names(&app.dock_names(), 56),
+            "TLP (Laptops), Powertop"
+        );
     }
 
     #[test]
@@ -3154,7 +3165,7 @@ mod tests {
         assert_eq!(app.modal_count_line(), "This will run 2 recipes.");
         assert_eq!(
             app.review_groups(),
-            vec![("Recipes", vec!["Fastfetch".into(), "Update System".into()])]
+            vec![("Recipes", vec!["Update System".into(), "Fastfetch".into()])]
         );
         assert!(app.other_mode_staged_note().is_none());
 
@@ -3171,6 +3182,12 @@ mod tests {
         assert!(app.admin_selected.is_empty());
         assert!(app.install_selected.contains(&0));
         assert!(!app.dock_visible());
+
+        app.admin_selected.insert(5);
+        assert_eq!(
+            app.admin_selected_names(),
+            vec!["nala (rank mirrors)".to_owned()]
+        );
     }
 
     #[test]

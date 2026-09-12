@@ -19,7 +19,7 @@ A fast Rust desktop app for installing/removing apps and running Linux admin tas
 - **Apps** to install or remove native packages and Flatpaks, with a Run Dock when items are staged
 - **Recipes** for one-click admin playbooks (updates, Bluetooth, TLP, Powertop, and more)
 - **System** page with live machine details
-- **Lumen Dark** by default, with a light theme toggle on the rail
+- **Teal Dark** by default, with Blue/Green/Orange skins and a light/dark toggle on the rail
 - Works across multiple distros
 
 ## 🚀 Quick Start

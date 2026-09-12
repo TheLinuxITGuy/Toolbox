@@ -1,7 +1,12 @@
-//! Lumen themes for Toolbox chrome.
+//! Lumen theme skins for Toolbox chrome.
 //!
-//! Dark (default): void canvas, teal accent, no navy/yellow brand colors.
-//! Light is toggle-only and is never the startup default.
+//! Four families (Teal, Blue, Green, Orange) each have Dark and Light modes.
+//! Startup default is Teal Dark. Navy/yellow brand colors stay retired.
+//!
+//! Preference is stored as a single `{family}-{mode}` line (example: `teal-dark`)
+//! in `$XDG_CONFIG_HOME/linux-it-guy-toolbox/theme`. Legacy files containing
+//! only `dark` or `light` are read as Teal plus that mode. A two-line
+//! `family\nmode` file is accepted on read for compatibility.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -29,8 +34,98 @@ pub const BORDER_LIGHT_BASE: Color32 = Color32::from_rgb(0x0F, 0x17, 0x2A);
 pub const CAUTION: Color32 = Color32::from_rgb(0xFD, 0xBA, 0x74);
 pub const CAUTION_ON: Color32 = Color32::from_rgb(0x1C, 0x14, 0x0A);
 
+const BLUE_VOID_DARK: Color32 = Color32::from_rgb(0x06, 0x0A, 0x12);
+const BLUE_SURFACE_DARK: Color32 = Color32::from_rgb(0x0E, 0x15, 0x20);
+const BLUE_ELEVATED_DARK: Color32 = Color32::from_rgb(0x16, 0x1E, 0x2C);
+const BLUE_TEXT_DARK: Color32 = Color32::from_rgb(0xE8, 0xEE, 0xF7);
+const BLUE_MUTED_DARK: Color32 = Color32::from_rgb(0x84, 0x94, 0xAB);
+const BLUE_ACCENT_DARK: Color32 = Color32::from_rgb(0x60, 0xA5, 0xFA);
+const BLUE_ACCENT_ON_DARK: Color32 = Color32::from_rgb(0x06, 0x10, 0x18);
+
+const BLUE_VOID_LIGHT: Color32 = Color32::from_rgb(0xEE, 0xF2, 0xF8);
+const BLUE_ELEVATED_LIGHT: Color32 = Color32::from_rgb(0xF4, 0xF7, 0xFB);
+const BLUE_ACCENT_LIGHT: Color32 = Color32::from_rgb(0x25, 0x63, 0xEB);
+const BLUE_ACCENT_BRIGHT: Color32 = Color32::from_rgb(0x3B, 0x82, 0xF6);
+const BLUE_ACCENT_ON_LIGHT: Color32 = Color32::from_rgb(0xEF, 0xF6, 0xFF);
+
+const GREEN_VOID_DARK: Color32 = Color32::from_rgb(0x07, 0x0B, 0x08);
+const GREEN_SURFACE_DARK: Color32 = Color32::from_rgb(0x10, 0x16, 0x12);
+const GREEN_ELEVATED_DARK: Color32 = Color32::from_rgb(0x17, 0x1E, 0x18);
+const GREEN_TEXT_DARK: Color32 = Color32::from_rgb(0xEE, 0xF4, 0xEF);
+const GREEN_MUTED_DARK: Color32 = Color32::from_rgb(0x8A, 0x96, 0x8C);
+const GREEN_ACCENT_DARK: Color32 = Color32::from_rgb(0x4A, 0xDE, 0x80);
+const GREEN_ACCENT_ON_DARK: Color32 = Color32::from_rgb(0x07, 0x14, 0x0C);
+
+const GREEN_VOID_LIGHT: Color32 = Color32::from_rgb(0xF0, 0xF4, 0xF1);
+const GREEN_ELEVATED_LIGHT: Color32 = Color32::from_rgb(0xF5, 0xF8, 0xF5);
+const GREEN_TEXT_LIGHT: Color32 = Color32::from_rgb(0x0B, 0x1A, 0x10);
+const GREEN_MUTED_LIGHT: Color32 = Color32::from_rgb(0x64, 0x78, 0x6A);
+const GREEN_ACCENT_LIGHT: Color32 = Color32::from_rgb(0x15, 0x80, 0x3D);
+const GREEN_ACCENT_BRIGHT: Color32 = Color32::from_rgb(0x22, 0xC5, 0x5E);
+const GREEN_ACCENT_ON_LIGHT: Color32 = Color32::from_rgb(0x05, 0x2E, 0x16);
+
+const ORANGE_VOID_DARK: Color32 = Color32::from_rgb(0x0C, 0x09, 0x07);
+const ORANGE_SURFACE_DARK: Color32 = Color32::from_rgb(0x16, 0x11, 0x0E);
+const ORANGE_ELEVATED_DARK: Color32 = Color32::from_rgb(0x1F, 0x18, 0x14);
+const ORANGE_TEXT_DARK: Color32 = Color32::from_rgb(0xF7, 0xF1, 0xEB);
+const ORANGE_MUTED_DARK: Color32 = Color32::from_rgb(0xA0, 0x8B, 0x7A);
+const ORANGE_ACCENT_DARK: Color32 = Color32::from_rgb(0xF9, 0x73, 0x16);
+const ORANGE_ACCENT_ON_DARK: Color32 = Color32::from_rgb(0x1A, 0x0C, 0x04);
+
+const ORANGE_VOID_LIGHT: Color32 = Color32::from_rgb(0xF5, 0xF1, 0xEC);
+const ORANGE_ELEVATED_LIGHT: Color32 = Color32::from_rgb(0xFA, 0xF7, 0xF4);
+const ORANGE_TEXT_LIGHT: Color32 = Color32::from_rgb(0x1C, 0x12, 0x0A);
+const ORANGE_MUTED_LIGHT: Color32 = Color32::from_rgb(0x8B, 0x73, 0x60);
+const ORANGE_ACCENT_LIGHT: Color32 = Color32::from_rgb(0xC2, 0x41, 0x0C);
+const ORANGE_ACCENT_ON_LIGHT: Color32 = Color32::from_rgb(0xFF, 0xF7, 0xED);
+
+const DIM_ALPHA_14: u8 = 36;
+const DIM_ALPHA_12: u8 = 31;
+const TEAL_LIGHT_DIM_ALPHA: u8 = 28;
+
 const CONFIG_DIR_NAME: &str = "linux-it-guy-toolbox";
 const THEME_FILE_NAME: &str = "theme";
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ThemeFamily {
+    #[default]
+    Teal,
+    Blue,
+    Green,
+    Orange,
+}
+
+impl ThemeFamily {
+    pub const ALL: [Self; 4] = [Self::Teal, Self::Blue, Self::Green, Self::Orange];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Teal => "teal",
+            Self::Blue => "blue",
+            Self::Green => "green",
+            Self::Orange => "orange",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Teal => "Teal",
+            Self::Blue => "Blue",
+            Self::Green => "Green",
+            Self::Orange => "Orange",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "teal" => Some(Self::Teal),
+            "blue" => Some(Self::Blue),
+            "green" => Some(Self::Green),
+            "orange" => Some(Self::Orange),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ThemeMode {
@@ -62,24 +157,68 @@ impl ThemeMode {
         }
     }
 
-    pub fn palette(self) -> Palette {
-        match self {
-            Self::Dark => Palette::dark(),
-            Self::Light => Palette::light(),
-        }
-    }
-
     pub fn toggle_tooltip(self) -> &'static str {
         match self {
-            Self::Dark => "Switch to light theme",
-            Self::Light => "Switch to dark theme",
+            Self::Dark => "Switch to light theme — right-click or long-press for appearance",
+            Self::Light => "Switch to dark theme — right-click or long-press for appearance",
         }
     }
 }
 
-/// Derived chrome colors for one Lumen theme.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ThemePreference {
+    pub family: ThemeFamily,
+    pub mode: ThemeMode,
+}
+
+impl ThemePreference {
+    pub fn as_file_line(self) -> String {
+        format!("{}-{}\n", self.family.as_str(), self.mode.as_str())
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        let trimmed = value.trim();
+        let lines: Vec<&str> = trimmed
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect();
+        if lines.len() == 2 {
+            return Some(Self {
+                family: ThemeFamily::parse(lines[0])?,
+                mode: ThemeMode::parse(lines[1])?,
+            });
+        }
+        if let Some((family, mode)) = lines.first().copied().unwrap_or(trimmed).split_once('-') {
+            return Some(Self {
+                family: ThemeFamily::parse(family)?,
+                mode: ThemeMode::parse(mode)?,
+            });
+        }
+        ThemeMode::parse(trimmed).map(|mode| Self {
+            family: ThemeFamily::Teal,
+            mode,
+        })
+    }
+}
+
+struct Seed {
+    void: Color32,
+    surface: Color32,
+    elevated: Color32,
+    text: Color32,
+    muted: Color32,
+    accent: Color32,
+    accent_bright: Color32,
+    accent_on: Color32,
+    accent_dim_alpha: u8,
+    border_ink: Color32,
+}
+
+/// Derived chrome colors for one Lumen skin.
 #[derive(Clone, Copy, Debug)]
 pub struct Palette {
+    pub family: ThemeFamily,
     pub mode: ThemeMode,
     pub void: Color32,
     pub surface: Color32,
@@ -119,105 +258,227 @@ pub struct Palette {
 }
 
 impl Palette {
-    pub fn dark() -> Self {
-        let accent_dim = Color32::from_rgba_unmultiplied(0x5E, 0xEA, 0xD4, 36);
-        let border = Color32::from_rgba_unmultiplied(255, 255, 255, 18);
-        let border_strong = Color32::from_rgba_unmultiplied(255, 255, 255, 31);
+    pub fn from(family: ThemeFamily, mode: ThemeMode) -> Self {
+        Self::compose(family, mode, seed(family, mode))
+    }
 
-        Self {
-            mode: ThemeMode::Dark,
-            void: VOID_DARK,
-            surface: SURFACE_DARK,
-            elevated: ELEVATED_DARK,
-            border,
-            border_strong,
-            text: TEXT_DARK,
-            muted: MUTED_DARK,
-            accent: ACCENT_DARK,
-            accent_dim,
-            accent_bright: ACCENT_DARK,
-            accent_on: ACCENT_ON_DARK,
-            danger: DANGER,
-            tile: SURFACE_DARK,
-            tile_selected: mix(SURFACE_DARK, ACCENT_DARK, 0.14),
-            cta_fill: ACCENT_DARK,
-            cta_text: ACCENT_ON_DARK,
-            widget_bg: ELEVATED_DARK,
-            widget_hover: mix(ELEVATED_DARK, ACCENT_DARK, 0.10),
-            input_fill: SURFACE_DARK,
-            input_border: border,
-            nav_hover: mix(VOID_DARK, ELEVATED_DARK, 0.55),
-            filter_selected_fill: ACCENT_DARK,
-            filter_selected_text: ACCENT_ON_DARK,
-            icon_well: ELEVATED_DARK,
-            modal_fill: ELEVATED_DARK,
-            modal_text: TEXT_DARK,
-            cancel_fill: SURFACE_DARK,
-            cancel_text: TEXT_DARK,
-            log_inner: VOID_DARK,
-            log_text: TEXT_DARK,
-            surface_hover: mix(SURFACE_DARK, ELEVATED_DARK, 0.65),
-            caution: CAUTION,
-            caution_on: CAUTION_ON,
-        }
+    pub fn dark() -> Self {
+        Self::from(ThemeFamily::Teal, ThemeMode::Dark)
     }
 
     pub fn light() -> Self {
-        let border = Color32::from_rgba_unmultiplied(
-            BORDER_LIGHT_BASE.r(),
-            BORDER_LIGHT_BASE.g(),
-            BORDER_LIGHT_BASE.b(),
-            20,
-        );
-        let border_strong = Color32::from_rgba_unmultiplied(
-            BORDER_LIGHT_BASE.r(),
-            BORDER_LIGHT_BASE.g(),
-            BORDER_LIGHT_BASE.b(),
-            36,
-        );
-        let accent_dim = Color32::from_rgba_unmultiplied(0x0D, 0x94, 0x88, 28);
+        Self::from(ThemeFamily::Teal, ThemeMode::Light)
+    }
 
-        Self {
-            mode: ThemeMode::Light,
-            void: VOID_LIGHT,
-            surface: SURFACE_LIGHT,
-            elevated: ELEVATED_LIGHT,
-            border,
-            border_strong,
-            text: TEXT_LIGHT,
-            muted: MUTED_LIGHT,
-            accent: ACCENT_LIGHT,
-            accent_dim,
-            accent_bright: ACCENT_BRIGHT,
-            accent_on: ACCENT_ON_LIGHT,
-            danger: DANGER,
-            tile: SURFACE_LIGHT,
-            tile_selected: mix(SURFACE_LIGHT, ACCENT_LIGHT, 0.10),
-            cta_fill: ACCENT_BRIGHT,
-            cta_text: ACCENT_ON_LIGHT,
-            widget_bg: ELEVATED_LIGHT,
-            widget_hover: mix(ELEVATED_LIGHT, ACCENT_LIGHT, 0.12),
-            input_fill: SURFACE_LIGHT,
-            input_border: border,
-            nav_hover: mix(VOID_LIGHT, TEXT_LIGHT, 0.06),
-            filter_selected_fill: ACCENT_BRIGHT,
-            filter_selected_text: ACCENT_ON_LIGHT,
-            icon_well: ELEVATED_LIGHT,
-            modal_fill: SURFACE_LIGHT,
-            modal_text: TEXT_LIGHT,
-            cancel_fill: ELEVATED_LIGHT,
-            cancel_text: TEXT_LIGHT,
-            log_inner: ELEVATED_LIGHT,
-            log_text: TEXT_LIGHT,
-            surface_hover: mix(SURFACE_LIGHT, TEXT_LIGHT, 0.06),
-            caution: CAUTION,
-            caution_on: CAUTION_ON,
+    fn compose(family: ThemeFamily, mode: ThemeMode, seed: Seed) -> Self {
+        let accent_dim = Color32::from_rgba_unmultiplied(
+            seed.accent.r(),
+            seed.accent.g(),
+            seed.accent.b(),
+            seed.accent_dim_alpha,
+        );
+        match mode {
+            ThemeMode::Dark => {
+                let border = Color32::from_rgba_unmultiplied(255, 255, 255, 18);
+                let border_strong = Color32::from_rgba_unmultiplied(255, 255, 255, 31);
+                Self {
+                    family,
+                    mode,
+                    void: seed.void,
+                    surface: seed.surface,
+                    elevated: seed.elevated,
+                    border,
+                    border_strong,
+                    text: seed.text,
+                    muted: seed.muted,
+                    accent: seed.accent,
+                    accent_dim,
+                    accent_bright: seed.accent_bright,
+                    accent_on: seed.accent_on,
+                    danger: DANGER,
+                    tile: seed.surface,
+                    tile_selected: mix(seed.surface, seed.accent, 0.14),
+                    cta_fill: seed.accent,
+                    cta_text: contrasting_on(seed.accent, seed.accent_on, seed.text),
+                    widget_bg: seed.elevated,
+                    widget_hover: mix(seed.elevated, seed.accent, 0.10),
+                    input_fill: seed.surface,
+                    input_border: border,
+                    nav_hover: mix(seed.void, seed.elevated, 0.55),
+                    filter_selected_fill: seed.accent,
+                    filter_selected_text: contrasting_on(seed.accent, seed.accent_on, seed.text),
+                    icon_well: seed.elevated,
+                    modal_fill: seed.elevated,
+                    modal_text: seed.text,
+                    cancel_fill: seed.surface,
+                    cancel_text: seed.text,
+                    log_inner: seed.void,
+                    log_text: seed.text,
+                    surface_hover: mix(seed.surface, seed.elevated, 0.65),
+                    caution: CAUTION,
+                    caution_on: CAUTION_ON,
+                }
+            }
+            ThemeMode::Light => {
+                let border = Color32::from_rgba_unmultiplied(
+                    seed.border_ink.r(),
+                    seed.border_ink.g(),
+                    seed.border_ink.b(),
+                    20,
+                );
+                let border_strong = Color32::from_rgba_unmultiplied(
+                    seed.border_ink.r(),
+                    seed.border_ink.g(),
+                    seed.border_ink.b(),
+                    36,
+                );
+                let cta_fill = seed.accent_bright;
+                let cta_text = contrasting_on(cta_fill, seed.accent_on, seed.text);
+                Self {
+                    family,
+                    mode,
+                    void: seed.void,
+                    surface: seed.surface,
+                    elevated: seed.elevated,
+                    border,
+                    border_strong,
+                    text: seed.text,
+                    muted: seed.muted,
+                    accent: seed.accent,
+                    accent_dim,
+                    accent_bright: seed.accent_bright,
+                    accent_on: seed.accent_on,
+                    danger: DANGER,
+                    tile: seed.surface,
+                    tile_selected: mix(seed.surface, seed.accent, 0.10),
+                    cta_fill,
+                    cta_text,
+                    widget_bg: seed.elevated,
+                    widget_hover: mix(seed.elevated, seed.accent, 0.12),
+                    input_fill: seed.surface,
+                    input_border: border,
+                    nav_hover: mix(seed.void, seed.text, 0.06),
+                    filter_selected_fill: seed.accent_bright,
+                    filter_selected_text: cta_text,
+                    icon_well: seed.elevated,
+                    modal_fill: seed.surface,
+                    modal_text: seed.text,
+                    cancel_fill: seed.elevated,
+                    cancel_text: seed.text,
+                    log_inner: seed.elevated,
+                    log_text: seed.text,
+                    surface_hover: mix(seed.surface, seed.text, 0.06),
+                    caution: CAUTION,
+                    caution_on: CAUTION_ON,
+                }
+            }
         }
     }
 
     /// Combined sun + right-facing crescent. Same glyph in both themes.
     pub fn paint_toggle_icon(&self, painter: &Painter, rect: Rect, punch: Color32) {
         paint_theme_toggle(painter, rect, self.text, punch);
+    }
+}
+
+fn seed(family: ThemeFamily, mode: ThemeMode) -> Seed {
+    match (family, mode) {
+        (ThemeFamily::Teal, ThemeMode::Dark) => Seed {
+            void: VOID_DARK,
+            surface: SURFACE_DARK,
+            elevated: ELEVATED_DARK,
+            text: TEXT_DARK,
+            muted: MUTED_DARK,
+            accent: ACCENT_DARK,
+            accent_bright: ACCENT_DARK,
+            accent_on: ACCENT_ON_DARK,
+            accent_dim_alpha: DIM_ALPHA_14,
+            border_ink: Color32::WHITE,
+        },
+        (ThemeFamily::Teal, ThemeMode::Light) => Seed {
+            void: VOID_LIGHT,
+            surface: SURFACE_LIGHT,
+            elevated: ELEVATED_LIGHT,
+            text: TEXT_LIGHT,
+            muted: MUTED_LIGHT,
+            accent: ACCENT_LIGHT,
+            accent_bright: ACCENT_BRIGHT,
+            accent_on: ACCENT_ON_LIGHT,
+            accent_dim_alpha: TEAL_LIGHT_DIM_ALPHA,
+            border_ink: BORDER_LIGHT_BASE,
+        },
+        (ThemeFamily::Blue, ThemeMode::Dark) => Seed {
+            void: BLUE_VOID_DARK,
+            surface: BLUE_SURFACE_DARK,
+            elevated: BLUE_ELEVATED_DARK,
+            text: BLUE_TEXT_DARK,
+            muted: BLUE_MUTED_DARK,
+            accent: BLUE_ACCENT_DARK,
+            accent_bright: BLUE_ACCENT_DARK,
+            accent_on: BLUE_ACCENT_ON_DARK,
+            accent_dim_alpha: DIM_ALPHA_14,
+            border_ink: Color32::WHITE,
+        },
+        (ThemeFamily::Blue, ThemeMode::Light) => Seed {
+            void: BLUE_VOID_LIGHT,
+            surface: SURFACE_LIGHT,
+            elevated: BLUE_ELEVATED_LIGHT,
+            text: TEXT_LIGHT,
+            muted: MUTED_LIGHT,
+            accent: BLUE_ACCENT_LIGHT,
+            accent_bright: BLUE_ACCENT_BRIGHT,
+            accent_on: BLUE_ACCENT_ON_LIGHT,
+            accent_dim_alpha: DIM_ALPHA_12,
+            border_ink: TEXT_LIGHT,
+        },
+        (ThemeFamily::Green, ThemeMode::Dark) => Seed {
+            void: GREEN_VOID_DARK,
+            surface: GREEN_SURFACE_DARK,
+            elevated: GREEN_ELEVATED_DARK,
+            text: GREEN_TEXT_DARK,
+            muted: GREEN_MUTED_DARK,
+            accent: GREEN_ACCENT_DARK,
+            accent_bright: GREEN_ACCENT_DARK,
+            accent_on: GREEN_ACCENT_ON_DARK,
+            accent_dim_alpha: DIM_ALPHA_14,
+            border_ink: Color32::WHITE,
+        },
+        (ThemeFamily::Green, ThemeMode::Light) => Seed {
+            void: GREEN_VOID_LIGHT,
+            surface: SURFACE_LIGHT,
+            elevated: GREEN_ELEVATED_LIGHT,
+            text: GREEN_TEXT_LIGHT,
+            muted: GREEN_MUTED_LIGHT,
+            accent: GREEN_ACCENT_LIGHT,
+            accent_bright: GREEN_ACCENT_BRIGHT,
+            accent_on: GREEN_ACCENT_ON_LIGHT,
+            accent_dim_alpha: DIM_ALPHA_12,
+            border_ink: GREEN_TEXT_LIGHT,
+        },
+        (ThemeFamily::Orange, ThemeMode::Dark) => Seed {
+            void: ORANGE_VOID_DARK,
+            surface: ORANGE_SURFACE_DARK,
+            elevated: ORANGE_ELEVATED_DARK,
+            text: ORANGE_TEXT_DARK,
+            muted: ORANGE_MUTED_DARK,
+            accent: ORANGE_ACCENT_DARK,
+            accent_bright: ORANGE_ACCENT_DARK,
+            accent_on: ORANGE_ACCENT_ON_DARK,
+            accent_dim_alpha: DIM_ALPHA_14,
+            border_ink: Color32::WHITE,
+        },
+        (ThemeFamily::Orange, ThemeMode::Light) => Seed {
+            void: ORANGE_VOID_LIGHT,
+            surface: SURFACE_LIGHT,
+            elevated: ORANGE_ELEVATED_LIGHT,
+            text: ORANGE_TEXT_LIGHT,
+            muted: ORANGE_MUTED_LIGHT,
+            accent: ORANGE_ACCENT_LIGHT,
+            accent_bright: ORANGE_ACCENT_DARK,
+            accent_on: ORANGE_ACCENT_ON_LIGHT,
+            accent_dim_alpha: DIM_ALPHA_12,
+            border_ink: ORANGE_TEXT_LIGHT,
+        },
     }
 }
 
@@ -315,8 +576,8 @@ pub fn paint_theme_toggle(painter: &Painter, rect: Rect, chrome_text: Color32, p
     painter.circle_filled(hole_b, CRESCENT_B.2 * scale, chrome_text);
 }
 
-pub fn apply_theme(ctx: &Context, mode: ThemeMode) {
-    let palette = mode.palette();
+pub fn apply_theme(ctx: &Context, family: ThemeFamily, mode: ThemeMode) {
+    let palette = Palette::from(family, mode);
     let mut style = (*ctx.global_style()).clone();
     style.spacing.item_spacing = Vec2::new(8.0, 6.0);
     style.spacing.button_padding = Vec2::new(13.0, 7.0);
@@ -378,33 +639,33 @@ pub fn theme_file_path() -> Option<PathBuf> {
     config_dir().map(|dir| dir.join(THEME_FILE_NAME))
 }
 
-pub fn load_theme_mode() -> ThemeMode {
+pub fn load_theme() -> ThemePreference {
     theme_file_path()
-        .and_then(|path| load_theme_mode_from(&path))
+        .and_then(|path| load_theme_from(&path))
         .unwrap_or_default()
 }
 
-pub fn load_theme_mode_from(path: &Path) -> Option<ThemeMode> {
+pub fn load_theme_from(path: &Path) -> Option<ThemePreference> {
     fs::read_to_string(path)
         .ok()
-        .and_then(|contents| ThemeMode::parse(&contents))
+        .and_then(|contents| ThemePreference::parse(&contents))
 }
 
-pub fn save_theme_mode(mode: ThemeMode) -> std::io::Result<PathBuf> {
+pub fn save_theme(family: ThemeFamily, mode: ThemeMode) -> std::io::Result<PathBuf> {
     let dir = config_dir().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::NotFound, "no usable config directory")
     })?;
     fs::create_dir_all(&dir)?;
     let path = dir.join(THEME_FILE_NAME);
-    save_theme_mode_to(&path, mode)?;
+    save_theme_to(&path, family, mode)?;
     Ok(path)
 }
 
-pub fn save_theme_mode_to(path: &Path, mode: ThemeMode) -> std::io::Result<()> {
+pub fn save_theme_to(path: &Path, family: ThemeFamily, mode: ThemeMode) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(path, format!("{}\n", mode.as_str()))
+    fs::write(path, ThemePreference { family, mode }.as_file_line())
 }
 
 pub fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
@@ -417,7 +678,6 @@ pub fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
     )
 }
 
-#[cfg(test)]
 fn relative_luminance(color: Color32) -> f32 {
     fn lin(channel: u8) -> f32 {
         let value = f32::from(channel) / 255.0;
@@ -431,7 +691,6 @@ fn relative_luminance(color: Color32) -> f32 {
     0.2126 * lin(color.r()) + 0.7152 * lin(color.g()) + 0.0722 * lin(color.b())
 }
 
-#[cfg(test)]
 fn contrast_ratio(a: Color32, b: Color32) -> f32 {
     let (left, right) = (relative_luminance(a), relative_luminance(b));
     let (hi, lo) = if left > right {
@@ -442,9 +701,27 @@ fn contrast_ratio(a: Color32, b: Color32) -> f32 {
     (hi + 0.05) / (lo + 0.05)
 }
 
+fn contrasting_on(fill: Color32, preferred: Color32, fallback: Color32) -> Color32 {
+    if contrast_ratio(preferred, fill) >= 4.5 {
+        preferred
+    } else {
+        fallback
+    }
+}
+
 #[cfg(test)]
 fn hex(color: Color32) -> String {
     format!("#{:02X}{:02X}{:02X}", color.r(), color.g(), color.b())
+}
+
+#[cfg(test)]
+fn all_palettes() -> Vec<Palette> {
+    ThemeFamily::ALL
+        .into_iter()
+        .flat_map(|family| {
+            [ThemeMode::Dark, ThemeMode::Light].map(|mode| Palette::from(family, mode))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -483,6 +760,85 @@ mod tests {
     }
 
     #[test]
+    fn skin_seed_hexes_are_exact() {
+        let teal_dark = Palette::from(ThemeFamily::Teal, ThemeMode::Dark);
+        let teal_light = Palette::from(ThemeFamily::Teal, ThemeMode::Light);
+        let blue_dark = Palette::from(ThemeFamily::Blue, ThemeMode::Dark);
+        let blue_light = Palette::from(ThemeFamily::Blue, ThemeMode::Light);
+        let green_dark = Palette::from(ThemeFamily::Green, ThemeMode::Dark);
+        let green_light = Palette::from(ThemeFamily::Green, ThemeMode::Light);
+        let orange_dark = Palette::from(ThemeFamily::Orange, ThemeMode::Dark);
+        let orange_light = Palette::from(ThemeFamily::Orange, ThemeMode::Light);
+
+        assert_eq!(hex(blue_dark.void), "#060A12");
+        assert_eq!(hex(blue_dark.surface), "#0E1520");
+        assert_eq!(hex(blue_dark.elevated), "#161E2C");
+        assert_eq!(hex(blue_dark.text), "#E8EEF7");
+        assert_eq!(hex(blue_dark.muted), "#8494AB");
+        assert_eq!(hex(blue_dark.accent), "#60A5FA");
+        assert_eq!(hex(blue_dark.accent_on), "#061018");
+        assert_eq!(blue_dark.accent_dim.a(), 36);
+
+        assert_eq!(hex(blue_light.void), "#EEF2F8");
+        assert_eq!(hex(blue_light.surface), "#FFFFFF");
+        assert_eq!(hex(blue_light.elevated), "#F4F7FB");
+        assert_eq!(hex(blue_light.text), "#0B1220");
+        assert_eq!(hex(blue_light.muted), "#64748B");
+        assert_eq!(hex(blue_light.accent), "#2563EB");
+        assert_eq!(hex(blue_light.accent_bright), "#3B82F6");
+        assert_eq!(hex(blue_light.accent_on), "#EFF6FF");
+        assert_eq!(blue_light.accent_dim.a(), 31);
+
+        assert_eq!(hex(green_dark.void), "#070B08");
+        assert_eq!(hex(green_dark.surface), "#101612");
+        assert_eq!(hex(green_dark.elevated), "#171E18");
+        assert_eq!(hex(green_dark.text), "#EEF4EF");
+        assert_eq!(hex(green_dark.muted), "#8A968C");
+        assert_eq!(hex(green_dark.accent), "#4ADE80");
+        assert_eq!(hex(green_dark.accent_on), "#07140C");
+        assert_eq!(green_dark.accent_dim.a(), 36);
+
+        assert_eq!(hex(green_light.void), "#F0F4F1");
+        assert_eq!(hex(green_light.surface), "#FFFFFF");
+        assert_eq!(hex(green_light.elevated), "#F5F8F5");
+        assert_eq!(hex(green_light.text), "#0B1A10");
+        assert_eq!(hex(green_light.muted), "#64786A");
+        assert_eq!(hex(green_light.accent), "#15803D");
+        assert_eq!(hex(green_light.accent_bright), "#22C55E");
+        assert_eq!(hex(green_light.accent_on), "#052E16");
+        assert_eq!(green_light.accent_dim.a(), 31);
+
+        assert_eq!(hex(orange_dark.void), "#0C0907");
+        assert_eq!(hex(orange_dark.surface), "#16110E");
+        assert_eq!(hex(orange_dark.elevated), "#1F1814");
+        assert_eq!(hex(orange_dark.text), "#F7F1EB");
+        assert_eq!(hex(orange_dark.muted), "#A08B7A");
+        assert_eq!(hex(orange_dark.accent), "#F97316");
+        assert_eq!(hex(orange_dark.accent_on), "#1A0C04");
+        assert_eq!(orange_dark.accent_dim.a(), 36);
+
+        assert_eq!(hex(orange_light.void), "#F5F1EC");
+        assert_eq!(hex(orange_light.surface), "#FFFFFF");
+        assert_eq!(hex(orange_light.elevated), "#FAF7F4");
+        assert_eq!(hex(orange_light.text), "#1C120A");
+        assert_eq!(hex(orange_light.muted), "#8B7360");
+        assert_eq!(hex(orange_light.accent), "#C2410C");
+        assert_eq!(hex(orange_light.accent_bright), "#F97316");
+        assert_eq!(hex(orange_light.accent_on), "#FFF7ED");
+        assert_eq!(orange_light.accent_dim.a(), 31);
+        assert_eq!(orange_light.cta_fill, orange_light.accent_bright);
+        assert_eq!(
+            orange_light.filter_selected_fill,
+            orange_light.accent_bright
+        );
+
+        assert_eq!(teal_dark.family, ThemeFamily::Teal);
+        assert_eq!(teal_light.cta_fill, ACCENT_BRIGHT);
+        assert_eq!(ThemeFamily::default(), ThemeFamily::Teal);
+        assert_eq!(ThemeMode::default(), ThemeMode::Dark);
+    }
+
+    #[test]
     fn retired_brand_hexes_are_gone_from_chrome() {
         let theme = production_theme();
         for retired in [
@@ -501,7 +857,9 @@ mod tests {
     #[test]
     fn default_theme_is_lumen_dark() {
         assert_eq!(ThemeMode::default(), ThemeMode::Dark);
+        assert_eq!(ThemeFamily::default(), ThemeFamily::Teal);
         let palette = Palette::dark();
+        assert_eq!(palette.family, ThemeFamily::Teal);
         assert_eq!(palette.void, VOID_DARK);
         assert_eq!(palette.surface, SURFACE_DARK);
         assert_eq!(palette.elevated, ELEVATED_DARK);
@@ -555,80 +913,132 @@ mod tests {
     }
 
     #[test]
+    fn caution_chips_stay_shared_and_never_paint_chrome() {
+        for palette in all_palettes() {
+            assert_eq!(
+                palette.danger, DANGER,
+                "{:?} {:?}",
+                palette.family, palette.mode
+            );
+            assert_eq!(
+                palette.caution, CAUTION,
+                "{:?} {:?}",
+                palette.family, palette.mode
+            );
+            assert_eq!(
+                palette.caution_on, CAUTION_ON,
+                "{:?} {:?}",
+                palette.family, palette.mode
+            );
+            assert_ne!(
+                palette.accent, CAUTION,
+                "{:?} {:?} accent must not be caution peach",
+                palette.family, palette.mode
+            );
+            assert_ne!(
+                palette.cta_fill, CAUTION,
+                "{:?} {:?} CTA must not be caution peach",
+                palette.family, palette.mode
+            );
+            assert_ne!(
+                palette.filter_selected_fill, CAUTION,
+                "{:?} {:?} filter-on must not be caution peach",
+                palette.family, palette.mode
+            );
+            assert_ne!(
+                palette.accent_bright, CAUTION,
+                "{:?} {:?} accent_bright must not be caution peach",
+                palette.family, palette.mode
+            );
+        }
+    }
+
+    #[test]
+    fn orange_uses_rust_not_caution_peach() {
+        for mode in [ThemeMode::Dark, ThemeMode::Light] {
+            let palette = Palette::from(ThemeFamily::Orange, mode);
+            assert_eq!(hex(palette.accent_bright), "#F97316");
+            assert_ne!(palette.accent, CAUTION);
+            assert_ne!(palette.cta_fill, CAUTION);
+            assert_eq!(palette.cta_fill, ORANGE_ACCENT_DARK);
+        }
+    }
+
+    #[test]
+    fn green_accent_is_leaf_not_teal_mint() {
+        let dark = Palette::from(ThemeFamily::Green, ThemeMode::Dark);
+        let light = Palette::from(ThemeFamily::Green, ThemeMode::Light);
+        assert_eq!(hex(dark.accent), "#4ADE80");
+        assert_eq!(hex(light.accent_bright), "#22C55E");
+        assert_ne!(dark.accent, ACCENT_DARK);
+        assert_ne!(light.accent, ACCENT_DARK);
+        assert_ne!(light.accent_bright, ACCENT_DARK);
+        assert_ne!(hex(dark.accent), "#5EEAD4");
+        assert_ne!(hex(light.accent), "#5EEAD4");
+    }
+
+    #[test]
     fn text_pairs_meet_aa_contrast() {
-        for palette in [Palette::dark(), Palette::light()] {
+        for palette in all_palettes() {
+            let label = format!("{:?} {:?}", palette.family, palette.mode);
             assert!(
                 contrast_ratio(palette.text, palette.void) >= 4.5,
-                "{:?} text on void contrast",
-                palette.mode
+                "{label} text on void contrast"
             );
             assert!(
                 contrast_ratio(palette.text, palette.surface) >= 4.5,
-                "{:?} text on surface contrast",
-                palette.mode
+                "{label} text on surface contrast"
             );
             assert!(
                 contrast_ratio(palette.text, palette.tile) >= 4.5,
-                "{:?} tile text contrast",
-                palette.mode
+                "{label} tile text contrast"
             );
             assert!(
                 contrast_ratio(palette.text, palette.tile_selected) >= 4.5,
-                "{:?} selected tile text contrast",
-                palette.mode
+                "{label} selected tile text contrast"
             );
             assert!(
                 contrast_ratio(palette.cta_text, palette.cta_fill) >= 4.5,
-                "{:?} CTA contrast {}",
-                palette.mode,
+                "{label} CTA contrast {}",
                 contrast_ratio(palette.cta_text, palette.cta_fill)
             );
             assert!(
                 contrast_ratio(palette.log_text, palette.log_inner) >= 4.5,
-                "{:?} log contrast",
-                palette.mode
+                "{label} log contrast"
             );
             assert!(
                 contrast_ratio(palette.filter_selected_text, palette.filter_selected_fill) >= 4.5,
-                "{:?} filter chip contrast",
-                palette.mode
+                "{label} filter chip contrast"
             );
             assert!(
                 contrast_ratio(palette.modal_text, palette.modal_fill) >= 4.5,
-                "{:?} modal text contrast",
-                palette.mode
+                "{label} modal text contrast"
             );
             assert!(
                 contrast_ratio(palette.cancel_text, palette.cancel_fill) >= 4.5,
-                "{:?} cancel button contrast",
-                palette.mode
+                "{label} cancel button contrast"
             );
             assert!(
                 contrast_ratio(palette.muted, palette.surface) >= 3.0,
-                "{:?} muted on surface",
-                palette.mode
+                "{label} muted on surface"
             );
             assert!(
                 contrast_ratio(palette.text, palette.icon_well) >= 3.0,
-                "{:?} letter fallback on icon well",
-                palette.mode
+                "{label} letter fallback on icon well"
             );
             assert_ne!(
                 palette.icon_well, palette.tile,
-                "{:?} icon well must step off the tile",
-                palette.mode
+                "{label} icon well must step off the tile"
             );
             assert_ne!(palette.tile, palette.void);
             assert_ne!(palette.border, palette.surface);
             assert!(
                 contrast_ratio(palette.caution_on, palette.caution) >= 4.5,
-                "{:?} caution chip contrast",
-                palette.mode
+                "{label} caution chip contrast"
             );
             assert_ne!(
                 palette.caution, palette.cta_fill,
-                "{:?} caution chips must not reuse the CTA fill",
-                palette.mode
+                "{label} caution chips must not reuse the CTA fill"
             );
         }
     }
@@ -640,8 +1050,19 @@ mod tests {
         assert_eq!(ThemeMode::parse("dark"), Some(ThemeMode::Dark));
         assert_eq!(ThemeMode::parse("LIGHT\n"), Some(ThemeMode::Light));
         assert_eq!(ThemeMode::parse("nope"), None);
-        assert_eq!(ThemeMode::Dark.toggle_tooltip(), "Switch to light theme");
-        assert_eq!(ThemeMode::Light.toggle_tooltip(), "Switch to dark theme");
+        assert_eq!(
+            ThemeMode::Dark.toggle_tooltip(),
+            "Switch to light theme — right-click or long-press for appearance"
+        );
+        assert_eq!(
+            ThemeMode::Light.toggle_tooltip(),
+            "Switch to dark theme — right-click or long-press for appearance"
+        );
+        assert_eq!(ThemeFamily::parse("TEAL"), Some(ThemeFamily::Teal));
+        assert_eq!(ThemeFamily::parse("blue"), Some(ThemeFamily::Blue));
+        assert_eq!(ThemeFamily::parse("green"), Some(ThemeFamily::Green));
+        assert_eq!(ThemeFamily::parse("orange"), Some(ThemeFamily::Orange));
+        assert_eq!(ThemeFamily::parse("navy"), None);
     }
 
     #[test]
@@ -729,7 +1150,7 @@ mod tests {
     }
 
     #[test]
-    fn theme_file_round_trips() {
+    fn theme_file_round_trips_and_migrates_legacy_mode() {
         let dir = std::env::temp_dir().join(format!(
             "linux-it-guy-toolbox-theme-{}-{}",
             std::process::id(),
@@ -739,13 +1160,58 @@ mod tests {
                 .as_nanos()
         ));
         let path = dir.join("theme");
-        save_theme_mode_to(&path, ThemeMode::Light).unwrap();
-        assert_eq!(load_theme_mode_from(&path), Some(ThemeMode::Light));
-        save_theme_mode_to(&path, ThemeMode::Dark).unwrap();
-        assert_eq!(fs::read_to_string(&path).unwrap(), "dark\n");
-        assert_eq!(load_theme_mode_from(&path), Some(ThemeMode::Dark));
+        save_theme_to(&path, ThemeFamily::Teal, ThemeMode::Light).unwrap();
+        assert_eq!(
+            load_theme_from(&path),
+            Some(ThemePreference {
+                family: ThemeFamily::Teal,
+                mode: ThemeMode::Light
+            })
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "teal-light\n");
+        save_theme_to(&path, ThemeFamily::Orange, ThemeMode::Dark).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "orange-dark\n");
+        assert_eq!(
+            load_theme_from(&path),
+            Some(ThemePreference {
+                family: ThemeFamily::Orange,
+                mode: ThemeMode::Dark
+            })
+        );
+        fs::write(&path, "dark\n").unwrap();
+        assert_eq!(
+            load_theme_from(&path),
+            Some(ThemePreference {
+                family: ThemeFamily::Teal,
+                mode: ThemeMode::Dark
+            })
+        );
+        fs::write(&path, "LIGHT\n").unwrap();
+        assert_eq!(
+            load_theme_from(&path),
+            Some(ThemePreference {
+                family: ThemeFamily::Teal,
+                mode: ThemeMode::Light
+            })
+        );
+        fs::write(&path, "green\nlight\n").unwrap();
+        assert_eq!(
+            load_theme_from(&path),
+            Some(ThemePreference {
+                family: ThemeFamily::Green,
+                mode: ThemeMode::Light
+            })
+        );
+        fs::write(&path, "blue-dark\n").unwrap();
+        assert_eq!(
+            load_theme_from(&path),
+            Some(ThemePreference {
+                family: ThemeFamily::Blue,
+                mode: ThemeMode::Dark
+            })
+        );
         fs::write(&path, "bogus\n").unwrap();
-        assert_eq!(load_theme_mode_from(&path), None);
+        assert_eq!(load_theme_from(&path), None);
         let _ = fs::remove_dir_all(&dir);
     }
 }

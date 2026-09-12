@@ -24,7 +24,7 @@ use system::{
     RemovableApp, RemovableSource, command_output, detect_package_manager, distro_name,
     env_or_unknown, scan_removable_apps, strip_ansi, uptime_compact, uptime_prose,
 };
-use theme::{Palette, ThemeMode};
+use theme::{Palette, ThemeFamily, ThemeMode};
 use validate::{is_exec_name, is_label, zeroize_string};
 
 fn main() -> eframe::Result {
@@ -162,6 +162,7 @@ struct ToolboxApp {
     run_drawer_open: bool,
     run_items: Vec<RunItem>,
     icons: HashMap<&'static str, TextureHandle>,
+    family: ThemeFamily,
     theme: ThemeMode,
     remove_apps: Vec<RemovableApp>,
     remove_scan: RemoveScanState,
@@ -171,8 +172,8 @@ struct ToolboxApp {
 impl ToolboxApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         install_fonts(&cc.egui_ctx);
-        let theme = theme::load_theme_mode();
-        theme::apply_theme(&cc.egui_ctx, theme);
+        let preference = theme::load_theme();
+        theme::apply_theme(&cc.egui_ctx, preference.family, preference.mode);
         let icons = load_icons(&cc.egui_ctx);
 
         let discovery = find_base_dir();
@@ -231,7 +232,8 @@ impl ToolboxApp {
             run_drawer_open: false,
             run_items: Vec::new(),
             icons,
-            theme,
+            family: preference.family,
+            theme: preference.mode,
             remove_apps: Vec::new(),
             remove_scan: RemoveScanState::Idle,
             remove_scan_rx: None,
@@ -239,13 +241,12 @@ impl ToolboxApp {
     }
 
     fn palette(&self) -> Palette {
-        self.theme.palette()
+        Palette::from(self.family, self.theme)
     }
 
-    fn toggle_theme(&mut self, ctx: &Context) {
-        self.theme = self.theme.toggle();
-        theme::apply_theme(ctx, self.theme);
-        if let Err(error) = theme::save_theme_mode(self.theme) {
+    fn persist_theme(&mut self, ctx: &Context) {
+        theme::apply_theme(ctx, self.family, self.theme);
+        if let Err(error) = theme::save_theme(self.family, self.theme) {
             if self.log == "Process logs will appear here..." {
                 self.log.clear();
             }
@@ -254,6 +255,19 @@ impl ToolboxApp {
             ));
             self.log_revision = self.log_revision.saturating_add(1);
         }
+    }
+
+    fn toggle_theme(&mut self, ctx: &Context) {
+        self.theme = self.theme.toggle();
+        self.persist_theme(ctx);
+    }
+
+    fn set_family(&mut self, ctx: &Context, family: ThemeFamily) {
+        if self.family == family {
+            return;
+        }
+        self.family = family;
+        self.persist_theme(ctx);
     }
 
     fn switch_page(&mut self, page: Page) {
@@ -669,9 +683,18 @@ impl ToolboxApp {
 
         ui.with_layout(Layout::bottom_up(Align::Center), |ui| {
             ui.add_space(14.0);
-            if theme_toggle_button(ui, &palette).clicked() {
+            let toggle = theme_toggle_button(ui, &palette);
+            if toggle.clicked() {
                 let ctx = ui.ctx().clone();
                 self.toggle_theme(&ctx);
+            }
+            let mut picked = None;
+            toggle.context_menu(|ui| {
+                picked = appearance_picker(ui, self.family, self.theme, &palette);
+            });
+            if let Some(family) = picked {
+                let ctx = ui.ctx().clone();
+                self.set_family(&ctx, family);
             }
         });
     }
@@ -1162,6 +1185,7 @@ impl ToolboxApp {
         let palette = self.palette();
         let metrics = self.glance_metrics();
         let rows = self.system_detail_rows();
+        let mut next_family = None;
         ScrollArea::vertical()
             .id_salt("system_page")
             .auto_shrink([false, false])
@@ -1203,7 +1227,18 @@ impl ToolboxApp {
                 section_eyebrow(ui, "Details", &palette);
                 ui.add_space(10.0);
                 system_details_card(ui, &rows, &palette);
+
+                ui.add_space(16.0);
+                section_eyebrow(ui, "Appearance", &palette);
+                ui.add_space(10.0);
+                if let Some(family) = appearance_card(ui, self.family, self.theme, &palette) {
+                    next_family = Some(family);
+                }
             });
+        if let Some(family) = next_family {
+            let ctx = ui.ctx().clone();
+            self.set_family(&ctx, family);
+        }
     }
 
     fn modal_count_line(&self) -> String {
@@ -1700,6 +1735,111 @@ fn theme_toggle_button(ui: &mut Ui, palette: &Palette) -> egui::Response {
     response
 }
 
+fn appearance_picker(
+    ui: &mut Ui,
+    current: ThemeFamily,
+    mode: ThemeMode,
+    chrome: &Palette,
+) -> Option<ThemeFamily> {
+    let mut picked = None;
+    ui.label(RichText::new("Appearance").color(chrome.text).strong());
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 8.0;
+        for family in ThemeFamily::ALL {
+            if family_swatch(ui, family, current, mode, chrome).clicked() {
+                picked = Some(family);
+            }
+        }
+    });
+    picked
+}
+
+fn appearance_card(
+    ui: &mut Ui,
+    current: ThemeFamily,
+    mode: ThemeMode,
+    chrome: &Palette,
+) -> Option<ThemeFamily> {
+    let mut picked = None;
+    Frame::new()
+        .fill(chrome.surface)
+        .stroke(Stroke::new(1.0_f32, chrome.border))
+        .corner_radius(CARD_RADIUS)
+        .inner_margin(egui::Margin::symmetric(16, 14))
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                for family in ThemeFamily::ALL {
+                    if family_swatch(ui, family, current, mode, chrome).clicked() {
+                        picked = Some(family);
+                    }
+                }
+            });
+        });
+    picked
+}
+
+fn family_swatch(
+    ui: &mut Ui,
+    family: ThemeFamily,
+    current: ThemeFamily,
+    mode: ThemeMode,
+    chrome: &Palette,
+) -> egui::Response {
+    let selected = family == current;
+    let skin = Palette::from(family, mode);
+    let label = family.label();
+    let width = if selected { 96.0 } else { 80.0 };
+    let (rect, response) = ui.allocate_exact_size(vec2(width, 32.0), Sense::click());
+    if selected {
+        ui.painter().rect_filled(rect, 16.0, skin.accent_dim);
+        ui.painter().rect_stroke(
+            rect,
+            16.0,
+            Stroke::new(1.0_f32, skin.accent),
+            StrokeKind::Inside,
+        );
+    } else if response.hovered() {
+        ui.painter().rect_filled(rect, 16.0, chrome.nav_hover);
+        ui.painter().rect_stroke(
+            rect,
+            16.0,
+            Stroke::new(1.0_f32, chrome.border),
+            StrokeKind::Inside,
+        );
+    } else {
+        ui.painter().rect_stroke(
+            rect,
+            16.0,
+            Stroke::new(1.0_f32, chrome.border),
+            StrokeKind::Inside,
+        );
+    }
+    let text_color = if selected { chrome.text } else { chrome.muted };
+    if selected {
+        ui.painter().text(
+            pos2(rect.left() + 14.0, rect.center().y),
+            Align2::LEFT_CENTER,
+            label,
+            FontId::proportional(13.0),
+            text_color,
+        );
+        ui.painter()
+            .circle_filled(pos2(rect.right() - 14.0, rect.center().y), 4.0, skin.accent);
+    } else {
+        ui.painter().text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            label,
+            FontId::proportional(13.0),
+            text_color,
+        );
+    }
+    response.on_hover_text(format!("{} appearance", family.label()))
+}
+
 fn mode_segment(ui: &mut Ui, mode: AppsMode, palette: &Palette) -> Option<AppsMode> {
     let mut clicked = None;
     ui.allocate_ui_with_layout(
@@ -1821,6 +1961,8 @@ fn paint_search_icon(painter: &Painter, rect: Rect, palette: &Palette) {
     );
 }
 
+/// Selected tiles wash and outline with the family accent (Orange Ember is
+/// `#F97316`). Caution peach is reserved for chips, never selection chrome.
 fn paint_card_background(painter: &Painter, rect: Rect, selected: bool, palette: &Palette) {
     painter.rect_filled(
         rect,
@@ -2265,6 +2407,7 @@ fn paint_select_pip(painter: &Painter, rect: Rect, selected: bool, palette: &Pal
     }
 }
 
+/// Shared caution chip (`#FDBA74` / `#1C140A`) in every family, including Ember.
 fn paint_warm_chip(painter: &Painter, left_center: Pos2, label: &str, palette: &Palette) {
     let width = (label.len() as f32 * 7.0 + 18.0).clamp(56.0, 148.0);
     let rect = Rect::from_center_size(
@@ -2811,6 +2954,7 @@ mod tests {
             run_drawer_open: false,
             run_items: Vec::new(),
             icons: HashMap::new(),
+            family: ThemeFamily::Teal,
             theme: ThemeMode::Dark,
             remove_apps: vec![
                 sample_removable("htop", "htop", false),
@@ -3150,12 +3294,97 @@ mod tests {
         assert!(!src.contains("paint_moon"));
         assert!(!src.contains("assets/theme/"));
         let theme = include_str!("theme.rs")
-            .split("#[cfg(test)]")
+            .split("mod tests {")
             .next()
             .expect("theme");
         assert!(theme.contains("paint_theme_toggle"));
         assert!(!theme.contains("paint_sun"));
         assert!(!theme.contains("paint_moon"));
+    }
+
+    #[test]
+    fn rail_sun_toggles_mode_only_and_appearance_picks_family() {
+        let src = production_main();
+        let toggle = src
+            .split("fn toggle_theme")
+            .nth(1)
+            .and_then(|rest| rest.split("fn set_family").next())
+            .expect("toggle_theme");
+        assert!(toggle.contains("self.theme.toggle()"));
+        assert!(!toggle.contains("family"), "{toggle}");
+        assert!(src.contains("fn set_family"));
+        assert!(src.contains("appearance_picker"));
+        assert!(src.contains("appearance_card"));
+        assert!(src.contains("family_swatch"));
+        assert!(src.contains("context_menu"));
+        let rail = src
+            .split("fn rail(")
+            .nth(1)
+            .and_then(|rest| rest.split("fn apps_page").next())
+            .expect("rail");
+        assert!(rail.contains("theme_toggle_button"));
+        assert!(rail.contains("toggle.clicked()"));
+        assert!(!rail.contains("set_family") || rail.contains("picked"));
+        assert!(rail.contains("appearance_picker"));
+        let swatch = src
+            .split("fn family_swatch")
+            .nth(1)
+            .and_then(|rest| rest.split("fn mode_segment").next())
+            .expect("family_swatch");
+        assert!(swatch.contains("skin.accent"));
+        assert!(!swatch.contains("caution"));
+        assert!(!swatch.contains("CAUTION"));
+    }
+
+    #[test]
+    fn apps_chrome_paints_family_accent_and_keeps_caution_off_cta() {
+        let src = production_main();
+        let card = src
+            .split("fn paint_card_background")
+            .nth(1)
+            .and_then(|rest| rest.split("fn paint_check").next())
+            .expect("paint_card_background");
+        assert!(card.contains("palette.tile_selected"));
+        assert!(card.contains("palette.accent_dim"));
+        assert!(card.contains("palette.accent"));
+        assert!(!card.contains("caution"));
+        let check = src
+            .split("fn paint_check")
+            .nth(1)
+            .and_then(|rest| rest.split("fn paint_app_icon").next())
+            .expect("paint_check");
+        assert!(check.contains("palette.accent"));
+        assert!(!check.contains("caution"));
+        let rail = src
+            .split("fn rail_button")
+            .nth(1)
+            .and_then(|rest| rest.split("fn theme_toggle_button").next())
+            .expect("rail_button");
+        assert!(rail.contains("palette.accent"));
+        assert!(!rail.contains("caution"));
+        let filter = src
+            .split("fn filter_chip")
+            .nth(1)
+            .and_then(|rest| rest.split("fn search_field").next())
+            .expect("filter_chip");
+        assert!(filter.contains("filter_selected_fill") || filter.contains("accent_bright"));
+        assert!(!filter.contains("caution"));
+        let cta = src
+            .split("fn cta_button")
+            .nth(1)
+            .and_then(|rest| rest.split("fn ghost_button").next())
+            .expect("cta_button");
+        assert!(cta.contains("palette.cta_fill"));
+        assert!(!cta.contains("caution"));
+        let chip = src
+            .split("fn paint_warm_chip")
+            .nth(1)
+            .and_then(|rest| rest.split("fn status_pill").next())
+            .expect("paint_warm_chip");
+        assert!(chip.contains("palette.caution"));
+        assert!(chip.contains("palette.caution_on"));
+        assert!(!chip.contains("cta_fill"));
+        assert!(!chip.contains("palette.accent"));
     }
 
     #[test]
@@ -3375,6 +3604,8 @@ mod tests {
             .expect("system_info_page");
         assert!(system.contains("Glance"));
         assert!(system.contains("Details"));
+        assert!(system.contains("Appearance"));
+        assert!(system.contains("appearance_card"));
         assert!(system.contains("up {}"));
         assert!(system.contains("system_details_card"));
         assert!(!system.contains("Copy all"));

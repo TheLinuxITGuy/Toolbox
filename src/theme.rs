@@ -1,7 +1,9 @@
 //! Lumen theme skins for Toolbox chrome.
 //!
-//! Four families (Teal, Blue, Green, Orange) each have Dark and Light modes.
-//! Startup default is Teal Dark. Navy/yellow brand colors stay retired.
+//! Four families (Teal, Blue/Ocean, Green/Forest, Orange/Ember) each have
+//! Dark and Light modes. Startup default is Teal Dark. Navy/yellow brand
+//! colors stay retired. Green Forest uses leaf `#4ADE80`, not Teal mint.
+//! Orange Ember CTA is `#F97316`; caution chips stay `#FDBA74`.
 //!
 //! Preference is stored as a single `{family}-{mode}` line (example: `teal-dark`)
 //! in `$XDG_CONFIG_HOME/linux-it-guy-toolbox/theme`. Legacy files containing
@@ -119,9 +121,9 @@ impl ThemeFamily {
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "teal" => Some(Self::Teal),
-            "blue" => Some(Self::Blue),
-            "green" => Some(Self::Green),
-            "orange" => Some(Self::Orange),
+            "blue" | "ocean" => Some(Self::Blue),
+            "green" | "forest" => Some(Self::Green),
+            "orange" | "ember" => Some(Self::Orange),
             _ => None,
         }
     }
@@ -946,6 +948,43 @@ mod tests {
     }
 
     #[test]
+    fn poppy_apps_dark_refs_keep_family_surfaces_and_collision_roles() {
+        let blue = Palette::from(ThemeFamily::Blue, ThemeMode::Dark);
+        let green = Palette::from(ThemeFamily::Green, ThemeMode::Dark);
+        let orange = Palette::from(ThemeFamily::Orange, ThemeMode::Dark);
+        let teal = Palette::from(ThemeFamily::Teal, ThemeMode::Dark);
+
+        assert_eq!(hex(blue.void), "#060A12");
+        assert_eq!(hex(blue.surface), "#0E1520");
+        assert_eq!(hex(blue.accent), "#60A5FA");
+        assert_eq!(blue.cta_fill, blue.accent);
+        assert_eq!(blue.filter_selected_fill, blue.accent);
+        assert_eq!(
+            blue.tile_selected,
+            mix(BLUE_SURFACE_DARK, BLUE_ACCENT_DARK, 0.14)
+        );
+
+        assert_eq!(hex(green.void), "#070B08");
+        assert_eq!(hex(green.surface), "#101612");
+        assert_eq!(hex(green.accent), "#4ADE80");
+        assert_ne!(green.accent, teal.accent);
+        assert_ne!(hex(green.accent), "#5EEAD4");
+        assert_eq!(green.cta_fill, green.accent);
+
+        assert_eq!(hex(orange.void), "#0C0907");
+        assert_eq!(hex(orange.surface), "#16110E");
+        assert_eq!(hex(orange.accent), "#F97316");
+        assert_eq!(hex(orange.cta_fill), "#F97316");
+        assert_eq!(hex(orange.filter_selected_fill), "#F97316");
+        assert_eq!(hex(orange.caution), "#FDBA74");
+        assert_eq!(hex(orange.caution_on), "#1C140A");
+        assert_ne!(orange.accent, orange.caution);
+        assert_ne!(orange.cta_fill, orange.caution);
+        assert_eq!(ThemeFamily::default(), ThemeFamily::Teal);
+        assert_eq!(teal.mode, ThemeMode::Dark);
+    }
+
+    #[test]
     fn green_accent_is_leaf_not_teal_mint() {
         let dark = Palette::from(ThemeFamily::Green, ThemeMode::Dark);
         let light = Palette::from(ThemeFamily::Green, ThemeMode::Light);
@@ -1041,8 +1080,11 @@ mod tests {
         );
         assert_eq!(ThemeFamily::parse("TEAL"), Some(ThemeFamily::Teal));
         assert_eq!(ThemeFamily::parse("blue"), Some(ThemeFamily::Blue));
+        assert_eq!(ThemeFamily::parse("ocean"), Some(ThemeFamily::Blue));
         assert_eq!(ThemeFamily::parse("green"), Some(ThemeFamily::Green));
+        assert_eq!(ThemeFamily::parse("forest"), Some(ThemeFamily::Green));
         assert_eq!(ThemeFamily::parse("orange"), Some(ThemeFamily::Orange));
+        assert_eq!(ThemeFamily::parse("ember"), Some(ThemeFamily::Orange));
         assert_eq!(ThemeFamily::parse("navy"), None);
     }
 

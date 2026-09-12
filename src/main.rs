@@ -1961,6 +1961,8 @@ fn paint_search_icon(painter: &Painter, rect: Rect, palette: &Palette) {
     );
 }
 
+/// Selected tiles wash and outline with the family accent (Orange Ember is
+/// `#F97316`). Caution peach is reserved for chips, never selection chrome.
 fn paint_card_background(painter: &Painter, rect: Rect, selected: bool, palette: &Palette) {
     painter.rect_filled(
         rect,
@@ -2405,6 +2407,7 @@ fn paint_select_pip(painter: &Painter, rect: Rect, selected: bool, palette: &Pal
     }
 }
 
+/// Shared caution chip (`#FDBA74` / `#1C140A`) in every family, including Ember.
 fn paint_warm_chip(painter: &Painter, left_center: Pos2, label: &str, palette: &Palette) {
     let width = (label.len() as f32 * 7.0 + 18.0).clamp(56.0, 148.0);
     let rect = Rect::from_center_size(
@@ -3331,6 +3334,57 @@ mod tests {
         assert!(swatch.contains("skin.accent"));
         assert!(!swatch.contains("caution"));
         assert!(!swatch.contains("CAUTION"));
+    }
+
+    #[test]
+    fn apps_chrome_paints_family_accent_and_keeps_caution_off_cta() {
+        let src = production_main();
+        let card = src
+            .split("fn paint_card_background")
+            .nth(1)
+            .and_then(|rest| rest.split("fn paint_check").next())
+            .expect("paint_card_background");
+        assert!(card.contains("palette.tile_selected"));
+        assert!(card.contains("palette.accent_dim"));
+        assert!(card.contains("palette.accent"));
+        assert!(!card.contains("caution"));
+        let check = src
+            .split("fn paint_check")
+            .nth(1)
+            .and_then(|rest| rest.split("fn paint_app_icon").next())
+            .expect("paint_check");
+        assert!(check.contains("palette.accent"));
+        assert!(!check.contains("caution"));
+        let rail = src
+            .split("fn rail_button")
+            .nth(1)
+            .and_then(|rest| rest.split("fn theme_toggle_button").next())
+            .expect("rail_button");
+        assert!(rail.contains("palette.accent"));
+        assert!(!rail.contains("caution"));
+        let filter = src
+            .split("fn filter_chip")
+            .nth(1)
+            .and_then(|rest| rest.split("fn search_field").next())
+            .expect("filter_chip");
+        assert!(filter.contains("filter_selected_fill") || filter.contains("accent_bright"));
+        assert!(!filter.contains("caution"));
+        let cta = src
+            .split("fn cta_button")
+            .nth(1)
+            .and_then(|rest| rest.split("fn ghost_button").next())
+            .expect("cta_button");
+        assert!(cta.contains("palette.cta_fill"));
+        assert!(!cta.contains("caution"));
+        let chip = src
+            .split("fn paint_warm_chip")
+            .nth(1)
+            .and_then(|rest| rest.split("fn status_pill").next())
+            .expect("paint_warm_chip");
+        assert!(chip.contains("palette.caution"));
+        assert!(chip.contains("palette.caution_on"));
+        assert!(!chip.contains("cta_fill"));
+        assert!(!chip.contains("palette.accent"));
     }
 
     #[test]

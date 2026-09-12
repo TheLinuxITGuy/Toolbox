@@ -218,7 +218,6 @@ struct Seed {
 /// Derived chrome colors for one Lumen skin.
 #[derive(Clone, Copy, Debug)]
 pub struct Palette {
-    pub family: ThemeFamily,
     pub mode: ThemeMode,
     pub void: Color32,
     pub surface: Color32,
@@ -259,18 +258,10 @@ pub struct Palette {
 
 impl Palette {
     pub fn from(family: ThemeFamily, mode: ThemeMode) -> Self {
-        Self::compose(family, mode, seed(family, mode))
+        Self::compose(mode, seed(family, mode))
     }
 
-    pub fn dark() -> Self {
-        Self::from(ThemeFamily::Teal, ThemeMode::Dark)
-    }
-
-    pub fn light() -> Self {
-        Self::from(ThemeFamily::Teal, ThemeMode::Light)
-    }
-
-    fn compose(family: ThemeFamily, mode: ThemeMode, seed: Seed) -> Self {
+    fn compose(mode: ThemeMode, seed: Seed) -> Self {
         let accent_dim = Color32::from_rgba_unmultiplied(
             seed.accent.r(),
             seed.accent.g(),
@@ -282,7 +273,6 @@ impl Palette {
                 let border = Color32::from_rgba_unmultiplied(255, 255, 255, 18);
                 let border_strong = Color32::from_rgba_unmultiplied(255, 255, 255, 31);
                 Self {
-                    family,
                     mode,
                     void: seed.void,
                     surface: seed.surface,
@@ -335,7 +325,6 @@ impl Palette {
                 let cta_fill = seed.accent_bright;
                 let cta_text = contrasting_on(cta_fill, seed.accent_on, seed.text);
                 Self {
-                    family,
                     mode,
                     void: seed.void,
                     surface: seed.surface,
@@ -715,11 +704,11 @@ fn hex(color: Color32) -> String {
 }
 
 #[cfg(test)]
-fn all_palettes() -> Vec<Palette> {
+fn all_palettes() -> Vec<(ThemeFamily, Palette)> {
     ThemeFamily::ALL
         .into_iter()
         .flat_map(|family| {
-            [ThemeMode::Dark, ThemeMode::Light].map(|mode| Palette::from(family, mode))
+            [ThemeMode::Dark, ThemeMode::Light].map(|mode| (family, Palette::from(family, mode)))
         })
         .collect()
 }
@@ -731,7 +720,7 @@ mod tests {
 
     fn production_theme() -> &'static str {
         include_str!("theme.rs")
-            .split("#[cfg(test)]")
+            .split("mod tests {")
             .next()
             .expect("theme module")
     }
@@ -770,6 +759,8 @@ mod tests {
         let orange_dark = Palette::from(ThemeFamily::Orange, ThemeMode::Dark);
         let orange_light = Palette::from(ThemeFamily::Orange, ThemeMode::Light);
 
+        assert_eq!(hex(teal_dark.void), "#07080A");
+        assert_eq!(hex(teal_dark.accent), "#5EEAD4");
         assert_eq!(hex(blue_dark.void), "#060A12");
         assert_eq!(hex(blue_dark.surface), "#0E1520");
         assert_eq!(hex(blue_dark.elevated), "#161E2C");
@@ -832,7 +823,6 @@ mod tests {
             orange_light.accent_bright
         );
 
-        assert_eq!(teal_dark.family, ThemeFamily::Teal);
         assert_eq!(teal_light.cta_fill, ACCENT_BRIGHT);
         assert_eq!(ThemeFamily::default(), ThemeFamily::Teal);
         assert_eq!(ThemeMode::default(), ThemeMode::Dark);
@@ -858,8 +848,7 @@ mod tests {
     fn default_theme_is_lumen_dark() {
         assert_eq!(ThemeMode::default(), ThemeMode::Dark);
         assert_eq!(ThemeFamily::default(), ThemeFamily::Teal);
-        let palette = Palette::dark();
-        assert_eq!(palette.family, ThemeFamily::Teal);
+        let palette = Palette::from(ThemeFamily::Teal, ThemeMode::Dark);
         assert_eq!(palette.void, VOID_DARK);
         assert_eq!(palette.surface, SURFACE_DARK);
         assert_eq!(palette.elevated, ELEVATED_DARK);
@@ -885,7 +874,7 @@ mod tests {
 
     #[test]
     fn light_theme_uses_lumen_light_tokens() {
-        let palette = Palette::light();
+        let palette = Palette::from(ThemeFamily::Teal, ThemeMode::Light);
         assert_eq!(palette.void, VOID_LIGHT);
         assert_eq!(palette.surface, SURFACE_LIGHT);
         assert_eq!(palette.elevated, ELEVATED_LIGHT);
@@ -914,41 +903,33 @@ mod tests {
 
     #[test]
     fn caution_chips_stay_shared_and_never_paint_chrome() {
-        for palette in all_palettes() {
-            assert_eq!(
-                palette.danger, DANGER,
-                "{:?} {:?}",
-                palette.family, palette.mode
-            );
-            assert_eq!(
-                palette.caution, CAUTION,
-                "{:?} {:?}",
-                palette.family, palette.mode
-            );
+        for (family, palette) in all_palettes() {
+            assert_eq!(palette.danger, DANGER, "{family:?} {:?}", palette.mode);
+            assert_eq!(palette.caution, CAUTION, "{family:?} {:?}", palette.mode);
             assert_eq!(
                 palette.caution_on, CAUTION_ON,
-                "{:?} {:?}",
-                palette.family, palette.mode
+                "{family:?} {:?}",
+                palette.mode
             );
             assert_ne!(
                 palette.accent, CAUTION,
-                "{:?} {:?} accent must not be caution peach",
-                palette.family, palette.mode
+                "{family:?} {:?} accent must not be caution peach",
+                palette.mode
             );
             assert_ne!(
                 palette.cta_fill, CAUTION,
-                "{:?} {:?} CTA must not be caution peach",
-                palette.family, palette.mode
+                "{family:?} {:?} CTA must not be caution peach",
+                palette.mode
             );
             assert_ne!(
                 palette.filter_selected_fill, CAUTION,
-                "{:?} {:?} filter-on must not be caution peach",
-                palette.family, palette.mode
+                "{family:?} {:?} filter-on must not be caution peach",
+                palette.mode
             );
             assert_ne!(
                 palette.accent_bright, CAUTION,
-                "{:?} {:?} accent_bright must not be caution peach",
-                palette.family, palette.mode
+                "{family:?} {:?} accent_bright must not be caution peach",
+                palette.mode
             );
         }
     }
@@ -979,8 +960,8 @@ mod tests {
 
     #[test]
     fn text_pairs_meet_aa_contrast() {
-        for palette in all_palettes() {
-            let label = format!("{:?} {:?}", palette.family, palette.mode);
+        for (family, palette) in all_palettes() {
+            let label = format!("{family:?} {:?}", palette.mode);
             assert!(
                 contrast_ratio(palette.text, palette.void) >= 4.5,
                 "{label} text on void contrast"

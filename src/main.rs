@@ -3291,7 +3291,7 @@ mod tests {
         assert!(!src.contains("paint_moon"));
         assert!(!src.contains("assets/theme/"));
         let theme = include_str!("theme.rs")
-            .split("#[cfg(test)]")
+            .split("mod tests {")
             .next()
             .expect("theme");
         assert!(theme.contains("paint_theme_toggle"));

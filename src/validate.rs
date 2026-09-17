@@ -308,9 +308,7 @@ pub fn zeroize_string(value: &mut String) {
     // Move the allocation out so `value` is empty immediately, then overwrite
     // every byte of the old buffer. into_bytes() does not reallocate.
     let mut bytes = std::mem::take(value).into_bytes();
-    for byte in &mut bytes {
-        *byte = 0;
-    }
+    bytes.fill(0);
     bytes.clear();
 }
 

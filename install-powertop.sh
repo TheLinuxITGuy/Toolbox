@@ -15,7 +15,7 @@ require_package_name "powertop"
 if command -v apt-get >/dev/null 2>&1; then
     if command -v nala >/dev/null 2>&1; then
         sudo nala update
-        sudo nala install -y powertop
+        sudo nala install -y -- powertop
         sudo nala install -f -y
     else
         sudo apt-get update

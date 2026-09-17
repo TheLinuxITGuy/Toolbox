@@ -15,7 +15,7 @@ require_package_name "stacer"
 if command -v apt-get >/dev/null 2>&1; then
     if command -v nala >/dev/null 2>&1; then
         sudo nala update
-        sudo nala install -y stacer
+        sudo nala install -y -- stacer
         sudo nala install -f -y
     else
         sudo apt-get update

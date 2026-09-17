@@ -84,6 +84,8 @@ Apps are defined in `apps_config.csv` with columns:
 
 Users can add applications by editing the `apps_config.csv` file.
 
+Package names, Flatpak IDs, and labels are validated before any helper script runs. Only run Toolbox from a directory you trust: `apps_config.csv` and the helper scripts beside the app (or, as a last resort, in the current working directory) are executed as your user and may call `sudo`. Brave Origin downloads a pinned installer from `dl.brave.com` and GPG-verifies it before running; a compromised vendor key would still be a full-system trust failure.
+
 >[!NOTE]
 > - Some apps are better as Flatpaks on certain distros
 > - Some admin actions are distro-specific

@@ -13,6 +13,18 @@ use crate::validate::{
     validate_notes, validate_package_name, validate_script_name,
 };
 
+/// Absolute placeholder used when the catalog was not found.
+/// Relative fallbacks such as `.` would resolve helper names against CWD.
+pub const MISSING_BASE_DIR: &str = "/var/empty-linux-it-guy-toolbox";
+
+/// How the catalog directory was located.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BaseDirSource {
+    Executable,
+    Ancestor,
+    WorkingDirectory,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct CsvAppEntry {
     #[serde(rename = "Category")]
@@ -141,21 +153,35 @@ pub fn resolve_helper_script(base_dir: &Path, name: &str) -> Result<String, Stri
         return Err(format!("helper script {name} was not found"));
     }
 
-    let canonical = path
-        .canonicalize()
-        .map_err(|error| format!("cannot resolve helper script {name}: {error}"))?;
-    let base = base_dir
-        .canonicalize()
-        .map_err(|error| format!("cannot resolve app directory: {error}"))?;
-
-    if !canonical.starts_with(&base) {
-        return Err(format!("helper script {name} is outside the app directory"));
-    }
-
-    canonical
+    helper_path_is_under_base(&path, base_dir)?
         .to_str()
         .map(ToOwned::to_owned)
         .ok_or_else(|| format!("helper script {name} path is not valid UTF-8"))
+}
+
+/// Re-check at spawn time that `script` canonicalizes inside `base_dir`.
+///
+/// Basename allowlisting alone is not enough: `/tmp/main.sh` must not run.
+pub fn helper_path_is_under_base(script: &Path, base_dir: &Path) -> Result<PathBuf, String> {
+    let base = base_dir
+        .canonicalize()
+        .map_err(|error| format!("cannot resolve app directory: {error}"))?;
+    if base.parent().is_none() {
+        return Err("app directory must not be the filesystem root".to_owned());
+    }
+
+    let canonical = script
+        .canonicalize()
+        .map_err(|error| format!("cannot resolve helper script {}: {error}", script.display()))?;
+
+    if !canonical.starts_with(&base) {
+        return Err(format!(
+            "helper script {} is outside the app directory",
+            script.display()
+        ));
+    }
+
+    Ok(canonical)
 }
 
 pub fn load_apps(base_dir: &Path) -> CatalogLoad {
@@ -254,14 +280,30 @@ const CATALOG_FILE: &str = "apps_config.csv";
 const HELPER_MARKER: &str = "main.sh";
 
 /// Result of locating the directory that holds the catalog and helper scripts.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct BaseDirDiscovery {
     pub base_dir: PathBuf,
     pub looked: Vec<PathBuf>,
     pub found: bool,
+    pub source: Option<BaseDirSource>,
+}
+
+impl Default for BaseDirDiscovery {
+    fn default() -> Self {
+        Self::missing()
+    }
 }
 
 impl BaseDirDiscovery {
+    fn missing() -> Self {
+        Self {
+            base_dir: PathBuf::from(MISSING_BASE_DIR),
+            looked: Vec::new(),
+            found: false,
+            source: None,
+        }
+    }
+
     pub fn not_found_message(&self) -> String {
         if self.looked.is_empty() {
             return "App catalog not found. Looked for apps_config.csv beside the helper scripts next to the executable, in parent folders, and in the current working directory.".to_owned();
@@ -287,25 +329,22 @@ pub fn find_base_dir() -> BaseDirDiscovery {
 }
 
 /// Lookup order: directory of the executable, walk-up toward a repo root that
-/// contains the catalog and helper scripts, the folder beside those helpers,
-/// then the current working directory.
+/// contains the catalog and helper scripts, then the current working directory
+/// as a last resort (untrusted; the UI warns when this source is used).
 pub fn discover_base_dir(exe: Option<&Path>, cwd: Option<&Path>) -> BaseDirDiscovery {
-    let mut discovery = BaseDirDiscovery {
-        base_dir: PathBuf::from("."),
-        looked: Vec::new(),
-        found: false,
-    };
+    let mut discovery = BaseDirDiscovery::missing();
     let mut seen = HashSet::new();
 
-    let mut consider = |dir: &Path| -> bool {
+    let mut consider = |dir: &Path, source: BaseDirSource| -> bool {
         let key = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
-        if !seen.insert(key) {
+        if !seen.insert(key.clone()) {
             return false;
         }
         discovery.looked.push(dir.to_path_buf());
         if catalog_present(dir) {
-            discovery.base_dir = dir.to_path_buf();
+            discovery.base_dir = key;
             discovery.found = true;
+            discovery.source = Some(source);
             return true;
         }
         false
@@ -314,13 +353,13 @@ pub fn discover_base_dir(exe: Option<&Path>, cwd: Option<&Path>) -> BaseDirDisco
     if let Some(exe) = exe {
         // 1. Next to the executable (e.g. a release layout that ships the CSV).
         if let Some(exe_dir) = exe.parent() {
-            if consider(exe_dir) {
+            if consider(exe_dir, BaseDirSource::Executable) {
                 return discovery;
             }
 
             // 2. Walk up from the binary toward a checkout root.
             for ancestor in exe_dir.ancestors().skip(1) {
-                if consider(ancestor) {
+                if consider(ancestor, BaseDirSource::Ancestor) {
                     return discovery;
                 }
                 if ancestor.parent().is_none() {
@@ -332,17 +371,23 @@ pub fn discover_base_dir(exe: Option<&Path>, cwd: Option<&Path>) -> BaseDirDisco
 
     // 3. Directory that already contains helper scripts (main.sh), if the
     // catalog sits beside them but was not on the exe walk.
-    for candidate in helper_script_dirs(exe, cwd) {
-        if consider(&candidate) {
+    for candidate in helper_script_dirs(exe, None) {
+        if consider(&candidate, BaseDirSource::Ancestor) {
             return discovery;
         }
     }
 
-    // 4. Current working directory.
-    if let Some(cwd) = cwd
-        && consider(cwd)
-    {
-        return discovery;
+    // 4. Current working directory. Last resort: scripts here are not tied
+    // to the executable, so the GUI warns when this source is used.
+    if let Some(cwd) = cwd {
+        for candidate in helper_script_dirs(None, Some(cwd)) {
+            if consider(&candidate, BaseDirSource::WorkingDirectory) {
+                return discovery;
+            }
+        }
+        if consider(cwd, BaseDirSource::WorkingDirectory) {
+            return discovery;
+        }
     }
 
     discovery
@@ -857,6 +902,7 @@ mod tests {
 
         let discovery = discover_base_dir(Some(&exe), Some(&cwd));
         assert!(discovery.found);
+        assert_eq!(discovery.source, Some(BaseDirSource::Executable));
         assert_eq!(
             discovery.base_dir.canonicalize().unwrap(),
             toolbox.path.canonicalize().unwrap()
@@ -875,6 +921,7 @@ mod tests {
 
         let discovery = discover_base_dir(Some(&exe), Some(&cwd));
         assert!(discovery.found);
+        assert_eq!(discovery.source, Some(BaseDirSource::Ancestor));
         assert_eq!(
             discovery.base_dir.canonicalize().unwrap(),
             toolbox.path.canonicalize().unwrap()
@@ -914,12 +961,42 @@ mod tests {
 
         let discovery = discover_base_dir(Some(&exe), Some(&cwd));
         assert!(discovery.found);
+        assert_eq!(discovery.source, Some(BaseDirSource::WorkingDirectory));
         assert_eq!(
             discovery.base_dir.canonicalize().unwrap(),
             cwd.canonicalize().unwrap()
         );
         let _ = fs::remove_dir_all(cwd);
         let _ = fs::remove_dir_all(exe_dir);
+    }
+
+    #[test]
+    fn discover_when_missing_does_not_fall_back_to_dot() {
+        let exe_dir = empty_dir("missing-exe-nodot");
+        let exe = exe_dir.join("linux-it-guy-toolbox");
+        fs::write(&exe, []).unwrap();
+        let cwd = empty_dir("missing-cwd-nodot");
+
+        let discovery = discover_base_dir(Some(&exe), Some(&cwd));
+        assert!(!discovery.found);
+        assert!(discovery.source.is_none());
+        assert_eq!(discovery.base_dir, PathBuf::from(MISSING_BASE_DIR));
+        let _ = fs::remove_dir_all(exe_dir);
+        let _ = fs::remove_dir_all(cwd);
+    }
+
+    #[test]
+    fn helper_path_is_under_base_rejects_same_basename_outside_root() {
+        let toolbox = temp_toolbox();
+        let outsider = empty_dir("evil-main");
+        fs::write(outsider.join("main.sh"), "#!/bin/bash\necho pwned\n").unwrap();
+
+        assert!(helper_path_is_under_base(&toolbox.path.join("main.sh"), &toolbox.path).is_ok());
+        assert!(
+            helper_path_is_under_base(&outsider.join("main.sh"), &toolbox.path).is_err(),
+            "basename main.sh outside the toolbox root must be rejected"
+        );
+        let _ = fs::remove_dir_all(outsider);
     }
 
     #[test]

@@ -122,7 +122,7 @@ apt_update() {
 
 apt_install() {
     if [[ "$APT_TOOL" == "nala" ]]; then
-        sudo nala install -y "$@"
+        sudo nala install -y -- "$@"
         sudo nala install -f -y
     else
         sudo apt-get install -y -- "$@"
@@ -132,7 +132,7 @@ apt_install() {
 
 apt_remove() {
     if [[ "$APT_TOOL" == "nala" ]]; then
-        sudo nala remove -y "$@"
+        sudo nala remove -y -- "$@"
     else
         sudo apt-get remove -y -- "$@"
         sudo apt-get autoremove -y
@@ -187,7 +187,7 @@ ensure_flatpak() {
         apt)
             if [[ "$APT_TOOL" == "nala" ]]; then
                 sudo -n nala update
-                sudo -n nala install -y flatpak
+                sudo -n nala install -y -- flatpak
             else
                 sudo -n apt-get update
                 sudo -n apt-get install -y -- flatpak

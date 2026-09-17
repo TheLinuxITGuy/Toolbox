@@ -16,7 +16,7 @@ if command -v apt-get >/dev/null 2>&1; then
     require_package_name "tlp-rdw"
     if command -v nala >/dev/null 2>&1; then
         sudo nala update
-        sudo nala install -y tlp tlp-rdw
+        sudo nala install -y -- tlp tlp-rdw
         sudo nala install -f -y
     else
         sudo apt-get update

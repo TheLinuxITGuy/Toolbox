@@ -392,6 +392,12 @@ fn extract_file_path(line: &str) -> Option<PathBuf> {
 }
 
 pub fn is_application_desktop(path: &Path) -> bool {
+    if path
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return false;
+    }
     let text = path.to_string_lossy();
     (text.contains("/usr/share/applications/") || text.contains("/usr/local/share/applications/"))
         && text.ends_with(".desktop")
@@ -577,6 +583,9 @@ mod tests {
         )));
         assert!(!is_application_desktop(Path::new(
             "/usr/share/applications/firefox.png"
+        )));
+        assert!(!is_application_desktop(Path::new(
+            "/usr/share/applications/../../etc/passwd.desktop"
         )));
     }
 

@@ -7,14 +7,17 @@
 
 use std::{
     io::{ErrorKind, Write},
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Output, Stdio},
     sync::mpsc::Sender,
 };
 
-use crate::catalog::{Task, display_command};
+use crate::catalog::{Task, display_command, helper_path_is_under_base};
 use crate::system::{command_exists, detect_package_manager};
-use crate::validate::{is_safe_script_name, redact_secret, validate_package_name, zeroize_string};
+use crate::validate::{
+    is_flatpak_id, is_safe_script_name, redact_secret, validate_main_sh_argv,
+    validate_package_name, zeroize_string,
+};
 
 #[derive(Debug)]
 pub enum RunnerMessage {
@@ -22,12 +25,25 @@ pub enum RunnerMessage {
     Done,
 }
 
-pub fn run_tasks(tasks: Vec<Task>, mut password: String, tx: Sender<RunnerMessage>) {
-    if let Err(error) = cache_sudo_credentials(&password) {
-        let _ = tx.send(RunnerMessage::Log(redact_secret(&error, &password)));
+pub fn run_tasks(
+    tasks: Vec<Task>,
+    mut password: String,
+    tx: Sender<RunnerMessage>,
+    base_dir: PathBuf,
+) {
+    let needs_sudo = tasks_need_privileges(&tasks);
+    if needs_sudo {
+        if let Err(error) = cache_sudo_credentials(&password) {
+            let _ = tx.send(RunnerMessage::Log(redact_secret(&error, &password)));
+            zeroize_string(&mut password);
+            let _ = tx.send(RunnerMessage::Done);
+            return;
+        }
+    } else {
+        let _ = tx.send(RunnerMessage::Log(
+            "[INFO] Skipping sudo; selected tasks run as the current user.".to_owned(),
+        ));
         zeroize_string(&mut password);
-        let _ = tx.send(RunnerMessage::Done);
-        return;
     }
 
     if tasks.iter().any(|task| task_needs_flatpak(&task.command))
@@ -42,7 +58,7 @@ pub fn run_tasks(tasks: Vec<Task>, mut password: String, tx: Sender<RunnerMessag
             task.description
         )));
 
-        if let Err(error) = validate_task_command(&task.command) {
+        if let Err(error) = validate_task_command(&task.command, &base_dir) {
             let _ = tx.send(RunnerMessage::Log(format!("[ERROR] {error}")));
             continue;
         }
@@ -95,7 +111,9 @@ pub fn run_tasks(tasks: Vec<Task>, mut password: String, tx: Sender<RunnerMessag
         }
     }
 
-    drop_sudo_credentials();
+    if needs_sudo {
+        drop_sudo_credentials();
+    }
     zeroize_string(&mut password);
     let _ = tx.send(RunnerMessage::Done);
 }
@@ -132,7 +150,44 @@ pub fn task_needs_flatpak(command: &[String]) -> bool {
     name == "main.sh"
         && args
             .windows(2)
-            .any(|pair| pair[0] == "--flatpak" && crate::validate::is_flatpak_id(&pair[1]))
+            .any(|pair| pair[0] == "--flatpak" && is_flatpak_id(&pair[1]))
+}
+
+/// Admin recipes and native package installs need sudo. User Flatpak
+/// install/remove does not, once the `flatpak` binary is already present.
+pub fn command_needs_privileges(command: &[String]) -> bool {
+    let Some((program, args)) = command.split_first() else {
+        return true;
+    };
+    if program != "bash" {
+        return true;
+    }
+    let Some(script) = args.first() else {
+        return true;
+    };
+    let name = Path::new(script)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    if name != "main.sh" {
+        return true;
+    }
+    if args.windows(2).any(|pair| pair[0] == "--package") {
+        return true;
+    }
+    let has_flatpak = args
+        .windows(2)
+        .any(|pair| pair[0] == "--flatpak" && is_flatpak_id(&pair[1]));
+    if has_flatpak {
+        return !command_exists("flatpak");
+    }
+    true
+}
+
+pub fn tasks_need_privileges(tasks: &[Task]) -> bool {
+    tasks
+        .iter()
+        .any(|task| command_needs_privileges(&task.command))
 }
 
 pub fn flatpak_package_install_command(package_manager: &str) -> Result<Vec<String>, String> {
@@ -154,6 +209,7 @@ pub fn flatpak_package_install_command(package_manager: &str) -> Result<Vec<Stri
                     "nala".to_owned(),
                     "install".to_owned(),
                     "-y".to_owned(),
+                    "--".to_owned(),
                     "flatpak".to_owned(),
                 ]);
             } else {
@@ -259,7 +315,7 @@ fn run_sudo_command(command: &[String], password: &str) -> Result<Output, String
         .map_err(|error| format!("[ERROR] {}", io_error_message(program, &error)))
 }
 
-fn validate_task_command(command: &[String]) -> Result<(), String> {
+fn validate_task_command(command: &[String], base_dir: &Path) -> Result<(), String> {
     let Some((program, args)) = command.split_first() else {
         return Err("Empty command.".to_owned());
     };
@@ -269,14 +325,18 @@ fn validate_task_command(command: &[String]) -> Result<(), String> {
     let Some(script) = args.first() else {
         return Err("Missing helper script path.".to_owned());
     };
-    let name = std::path::Path::new(script)
+    let canonical = helper_path_is_under_base(Path::new(script), base_dir)?;
+    let name = canonical
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| "Invalid helper script path.".to_owned())?;
     if !is_safe_script_name(name) {
         return Err(format!("Helper script {name} is not allowed."));
     }
-    if args.len() > 1 && name != "main.sh" {
+    let extra = &args[1..];
+    if name == "main.sh" {
+        validate_main_sh_argv(extra).map_err(|error| error.to_string())?;
+    } else if !extra.is_empty() {
         return Err("Admin helper scripts do not accept extra arguments.".to_owned());
     }
     Ok(())
@@ -327,41 +387,147 @@ fn drop_sudo_credentials() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_DIR_SEQ: AtomicU64 = AtomicU64::new(0);
+
+    struct TempToolbox {
+        path: PathBuf,
+    }
+
+    impl Drop for TempToolbox {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn temp_toolbox() -> TempToolbox {
+        let seq = TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "linux-it-guy-toolbox-runner-{}-{}",
+            std::process::id(),
+            seq
+        ));
+        fs::create_dir_all(&path).expect("create temp toolbox dir");
+        fs::write(path.join("main.sh"), "#!/bin/bash\n").unwrap();
+        fs::write(path.join("update-system.sh"), "#!/bin/bash\n").unwrap();
+        TempToolbox { path }
+    }
+
+    fn main_sh_install(base: &Path) -> Vec<String> {
+        vec![
+            "bash".into(),
+            base.join("main.sh").to_string_lossy().into_owned(),
+            "--label".into(),
+            "Firefox".into(),
+            "--package".into(),
+            "firefox".into(),
+            "install".into(),
+        ]
+    }
 
     #[test]
     fn validate_task_command_accepts_main_sh_argv() {
-        assert!(
-            validate_task_command(&[
-                "bash".into(),
-                "/opt/toolbox/main.sh".into(),
-                "--label".into(),
-                "Firefox".into(),
-                "--package".into(),
-                "firefox".into(),
-                "install".into(),
-            ])
-            .is_ok()
-        );
+        let toolbox = temp_toolbox();
+        assert!(validate_task_command(&main_sh_install(&toolbox.path), &toolbox.path).is_ok());
     }
 
     #[test]
     fn validate_task_command_accepts_admin_script_without_args() {
-        assert!(
-            validate_task_command(&["bash".into(), "/opt/toolbox/update-system.sh".into()]).is_ok()
-        );
+        let toolbox = temp_toolbox();
+        let script = toolbox
+            .path
+            .join("update-system.sh")
+            .to_string_lossy()
+            .into_owned();
+        assert!(validate_task_command(&["bash".into(), script], &toolbox.path).is_ok());
     }
 
     #[test]
     fn validate_task_command_rejects_shell_or_unknown_binaries() {
-        assert!(validate_task_command(&["sh".into(), "-c".into(), "id".into()]).is_err());
-        assert!(validate_task_command(&["sudo".into(), "pacman".into(), "-Syu".into()]).is_err());
-        assert!(validate_task_command(&["bash".into(), "/tmp/evil.sh".into()]).is_err());
+        let toolbox = temp_toolbox();
+        let update = toolbox
+            .path
+            .join("update-system.sh")
+            .to_string_lossy()
+            .into_owned();
         assert!(
-            validate_task_command(&[
-                "bash".into(),
-                "/opt/toolbox/update-system.sh".into(),
-                "extra".into()
-            ])
+            validate_task_command(&["sh".into(), "-c".into(), "id".into()], &toolbox.path).is_err()
+        );
+        assert!(
+            validate_task_command(
+                &["sudo".into(), "pacman".into(), "-Syu".into()],
+                &toolbox.path
+            )
+            .is_err()
+        );
+        assert!(
+            validate_task_command(&["bash".into(), "/tmp/evil.sh".into()], &toolbox.path).is_err()
+        );
+        assert!(
+            validate_task_command(&["bash".into(), update, "extra".into()], &toolbox.path).is_err()
+        );
+    }
+
+    #[test]
+    fn validate_task_command_rejects_allowlisted_basename_outside_base() {
+        let toolbox = temp_toolbox();
+        let outsider = std::env::temp_dir().join(format!(
+            "linux-it-guy-toolbox-evil-{}-{}",
+            std::process::id(),
+            TEST_DIR_SEQ.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&outsider).unwrap();
+        let script = outsider.join("main.sh");
+        fs::write(&script, "#!/bin/bash\necho pwned\n").unwrap();
+        let command = vec![
+            "bash".into(),
+            script.to_string_lossy().into_owned(),
+            "--label".into(),
+            "Firefox".into(),
+            "--package".into(),
+            "firefox".into(),
+            "install".into(),
+        ];
+        assert!(validate_task_command(&command, &toolbox.path).is_err());
+        let _ = fs::remove_dir_all(outsider);
+    }
+
+    #[test]
+    fn validate_task_command_rejects_invalid_main_sh_payloads() {
+        let toolbox = temp_toolbox();
+        let script = toolbox.path.join("main.sh").to_string_lossy().into_owned();
+        assert!(
+            validate_task_command(
+                &[
+                    "bash".into(),
+                    script.clone(),
+                    "--label".into(),
+                    "Firefox".into(),
+                    "--package".into(),
+                    "-Syu".into(),
+                    "install".into(),
+                ],
+                &toolbox.path
+            )
+            .is_err()
+        );
+        assert!(
+            validate_task_command(
+                &[
+                    "bash".into(),
+                    script,
+                    "--label".into(),
+                    "Firefox".into(),
+                    "--package".into(),
+                    "firefox".into(),
+                    "--extra".into(),
+                    "x".into(),
+                    "install".into(),
+                ],
+                &toolbox.path
+            )
             .is_err()
         );
     }
@@ -369,6 +535,42 @@ mod tests {
     #[test]
     fn cache_sudo_requires_password() {
         assert!(cache_sudo_credentials("").is_err());
+    }
+
+    #[test]
+    fn native_and_admin_tasks_need_privileges_flatpak_user_does_not() {
+        let toolbox = temp_toolbox();
+        let native = main_sh_install(&toolbox.path);
+        assert!(command_needs_privileges(&native));
+
+        let admin = vec![
+            "bash".to_owned(),
+            toolbox
+                .path
+                .join("update-system.sh")
+                .to_string_lossy()
+                .into_owned(),
+        ];
+        assert!(command_needs_privileges(&admin));
+
+        let flatpak = vec![
+            "bash".into(),
+            toolbox.path.join("main.sh").to_string_lossy().into_owned(),
+            "--label".into(),
+            "Brave Browser".into(),
+            "--flatpak".into(),
+            "com.brave.Browser".into(),
+            "install".into(),
+        ];
+        if command_exists("flatpak") {
+            assert!(!command_needs_privileges(&flatpak));
+        } else {
+            assert!(command_needs_privileges(&flatpak));
+        }
+        assert!(tasks_need_privileges(&[Task {
+            description: "Installing Firefox".into(),
+            command: native,
+        }]));
     }
 
     #[test]
@@ -425,6 +627,7 @@ mod tests {
         assert_eq!(apt[0], "sudo");
         assert_eq!(apt[1], "-S");
         assert!(apt.contains(&"flatpak".to_owned()));
+        assert!(apt.contains(&"--".to_owned()));
         assert!(apt.contains(&"apt-get".to_owned()) || apt.contains(&"nala".to_owned()));
 
         let dnf = flatpak_package_install_command("dnf").unwrap();

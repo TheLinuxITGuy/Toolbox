@@ -91,21 +91,31 @@ pub fn is_action(value: &str) -> bool {
     matches!(value, "install" | "remove")
 }
 
-fn is_safe_display_text(value: &str, max_len: usize) -> bool {
-    !value.is_empty()
-        && value.len() <= max_len
-        && !value.starts_with('-')
-        && !value.contains("..")
-        && value.chars().all(|c| c.is_ascii_graphic() || c == ' ')
-        && !value.chars().any(|c| c.is_ascii_control())
+/// Display identifiers passed through to `main.sh --label`.
+///
+/// Matches `is_valid_label` in toolbox-lib.sh: must start with an alphanumeric
+/// character, and may then contain letters, digits, spaces, and `._+()-`.
+/// Shell metacharacters (`$`, `;`, `|`, backticks, quotes) are rejected.
+fn is_safe_label_text(value: &str, max_len: usize) -> bool {
+    if value.is_empty() || value.len() > max_len || value.starts_with('-') || value.contains("..") {
+        return false;
+    }
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_alphanumeric()
+        && chars.all(|c| {
+            c.is_ascii_alphanumeric() || matches!(c, ' ' | '.' | '_' | '+' | '(' | ')' | '-')
+        })
 }
 
 pub fn is_label(value: &str) -> bool {
-    is_safe_display_text(value, MAX_LABEL_LEN)
+    is_safe_label_text(value, MAX_LABEL_LEN)
 }
 
 pub fn is_category(value: &str) -> bool {
-    is_safe_display_text(value, MAX_CATEGORY_LEN)
+    is_safe_label_text(value, MAX_CATEGORY_LEN)
 }
 
 pub fn is_notes(value: &str) -> bool {
@@ -197,6 +207,94 @@ pub fn validate_script_name(name: &str) -> Result<(), ValidationError> {
     }
 }
 
+/// Validate argv that follows `bash <canonical-main.sh>`.
+///
+/// The GUI builds this list; the runner re-checks it immediately before spawn
+/// so a future code path cannot smuggle extra flags or a second action.
+pub fn validate_main_sh_argv(args: &[String]) -> Result<(), ValidationError> {
+    let mut label = false;
+    let mut package = false;
+    let mut flatpak = false;
+    let mut exec = false;
+    let mut action = false;
+    let mut index = 0;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--label" => {
+                if label {
+                    return Err(err("label", "specified more than once"));
+                }
+                let value = next_flag_value(args, &mut index, "label")?;
+                validate_label(value)?;
+                label = true;
+            }
+            "--package" => {
+                if package {
+                    return Err(err("package", "specified more than once"));
+                }
+                let value = next_flag_value(args, &mut index, "package")?;
+                validate_package_name(value)?;
+                package = true;
+            }
+            "--flatpak" => {
+                if flatpak {
+                    return Err(err("flatpak", "specified more than once"));
+                }
+                let value = next_flag_value(args, &mut index, "flatpak")?;
+                validate_flatpak_id(value)?;
+                flatpak = true;
+            }
+            "--exec" => {
+                if exec {
+                    return Err(err("exec", "specified more than once"));
+                }
+                let value = next_flag_value(args, &mut index, "exec")?;
+                validate_exec_name(value)?;
+                exec = true;
+            }
+            "install" | "remove" => {
+                if action {
+                    return Err(err("action", "specified more than once"));
+                }
+                validate_action(&args[index])?;
+                action = true;
+                index += 1;
+            }
+            other if other.starts_with('-') => {
+                return Err(err("argument", format!("unknown flag {other}")));
+            }
+            other => {
+                return Err(err("argument", format!("unexpected argument {other}")));
+            }
+        }
+    }
+
+    if !label {
+        return Err(err("label", "is required"));
+    }
+    if !action {
+        return Err(err("action", "must be install or remove"));
+    }
+    if !package && !flatpak {
+        return Err(err("target", "package or Flatpak ID is required"));
+    }
+    Ok(())
+}
+
+fn next_flag_value<'a>(
+    args: &'a [String],
+    index: &mut usize,
+    field: &'static str,
+) -> Result<&'a str, ValidationError> {
+    let value = args.get(*index + 1).map(String::as_str).unwrap_or("");
+    if value.is_empty() || value.starts_with("--") || matches!(value, "install" | "remove") {
+        return Err(err(field, "is missing"));
+    }
+    *index += 2;
+    Ok(value)
+}
+
 /// Replace every occurrence of a secret in `text` so it cannot appear in logs.
 pub fn redact_secret(text: &str, secret: &str) -> String {
     if secret.is_empty() {
@@ -207,11 +305,13 @@ pub fn redact_secret(text: &str, secret: &str) -> String {
 
 /// Overwrite a String's contents before dropping it.
 pub fn zeroize_string(value: &mut String) {
-    // fill() writes NULs through the existing allocation, then clear() sets
-    // len=0 without shrinking, so the secret is not left as readable UTF-8.
-    let len = value.len();
-    value.replace_range(.., &"\0".repeat(len));
-    value.clear();
+    // Move the allocation out so `value` is empty immediately, then overwrite
+    // every byte of the old buffer. into_bytes() does not reallocate.
+    let mut bytes = std::mem::take(value).into_bytes();
+    for byte in &mut bytes {
+        *byte = 0;
+    }
+    bytes.clear();
 }
 
 #[cfg(test)]
@@ -363,11 +463,89 @@ mod tests {
         assert!(is_label("Brave Browser"));
         assert!(is_label("Brave Origin"));
         assert!(is_label("nala (rank mirrors) - Debian only"));
+        assert!(is_label("ProtonUp-Qt"));
         assert!(!is_label("bad\nlabel"));
         assert!(!is_label("-sneaky"));
+        assert!(!is_label("bad;label"));
+        assert!(!is_label("bad$(id)"));
+        assert!(!is_label("bad`id`"));
+        assert!(!is_label("bad|label"));
+        assert!(!is_label("label/../x"));
         assert!(is_notes("Native package"));
         assert!(is_notes(""));
         assert!(!is_notes("line1\nline2"));
+    }
+
+    #[test]
+    fn main_sh_argv_accepts_catalog_shape_and_rejects_extras() {
+        assert!(
+            validate_main_sh_argv(&[
+                "--label".into(),
+                "Firefox".into(),
+                "--package".into(),
+                "firefox".into(),
+                "--exec".into(),
+                "firefox".into(),
+                "install".into(),
+            ])
+            .is_ok()
+        );
+        assert!(
+            validate_main_sh_argv(&[
+                "--label".into(),
+                "Brave Browser".into(),
+                "--flatpak".into(),
+                "com.brave.Browser".into(),
+                "remove".into(),
+            ])
+            .is_ok()
+        );
+        assert!(
+            validate_main_sh_argv(&["--label".into(), "Firefox".into(), "install".into()]).is_err()
+        );
+        assert!(
+            validate_main_sh_argv(&[
+                "--label".into(),
+                "Firefox".into(),
+                "--package".into(),
+                "firefox".into(),
+                "upgrade".into(),
+            ])
+            .is_err()
+        );
+        assert!(
+            validate_main_sh_argv(&[
+                "--label".into(),
+                "Firefox".into(),
+                "--package".into(),
+                "-Syu".into(),
+                "install".into(),
+            ])
+            .is_err()
+        );
+        assert!(
+            validate_main_sh_argv(&[
+                "--label".into(),
+                "Firefox".into(),
+                "--package".into(),
+                "firefox".into(),
+                "--evil".into(),
+                "x".into(),
+                "install".into(),
+            ])
+            .is_err()
+        );
+        assert!(
+            validate_main_sh_argv(&[
+                "--label".into(),
+                "Firefox".into(),
+                "--package".into(),
+                "firefox".into(),
+                "install".into(),
+                "install".into(),
+            ])
+            .is_err()
+        );
     }
 
     #[test]
@@ -392,6 +570,10 @@ mod tests {
             ("is_valid_flatpak_id", "com.evil;App", false),
             ("is_valid_action", "install", true),
             ("is_valid_action", "upgrade", false),
+            ("is_valid_label", "Brave Browser", true),
+            ("is_valid_label", "nala (rank mirrors) - Debian only", true),
+            ("is_valid_label", "bad;label", false),
+            ("is_valid_label", "bad$(id)", false),
         ];
 
         for (func, value, expected) in cases {
@@ -581,6 +763,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "downloads the official Brave installer; run with cargo test --ignored"]
     fn brave_gpg_verify_accepts_official_signed_installer() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let key = root.join("assets/keys/brave-install.sh.asc");

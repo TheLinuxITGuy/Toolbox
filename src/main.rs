@@ -18,8 +18,10 @@ use eframe::egui::{
     ScrollArea, Sense, Stroke, StrokeKind, TextEdit, TextureHandle, TextureOptions, Ui, pos2, vec2,
 };
 
-use catalog::{AdminTask, AppEntry, CatalogLoad, Task, admin_tasks, find_base_dir, load_apps};
-use runner::{RunnerMessage, run_tasks};
+use catalog::{
+    AdminTask, AppEntry, BaseDirSource, CatalogLoad, Task, admin_tasks, find_base_dir, load_apps,
+};
+use runner::{RunnerMessage, run_tasks, tasks_need_privileges};
 use system::{
     RemovableApp, RemovableSource, command_output, detect_package_manager, distro_name,
     env_or_unknown, scan_removable_apps, strip_ansi, uptime_compact, uptime_prose,
@@ -190,8 +192,20 @@ impl ToolboxApp {
         let package_manager = detect_package_manager();
 
         let mut log = "Process logs will appear here...".to_owned();
+        if discovery.source == Some(BaseDirSource::WorkingDirectory) {
+            log = format!(
+                "[WARN] App catalog loaded from the current working directory ({}). Only run Toolbox from a checkout you trust; helper scripts in that folder can call sudo.",
+                base_dir.display()
+            );
+        }
         if let Some(error) = &catalog.error {
-            log = format!("[ERROR] {error}");
+            if log == "Process logs will appear here..." {
+                log = format!("[ERROR] {error}");
+            } else {
+                log.push('\n');
+                log.push_str("[ERROR] ");
+                log.push_str(error);
+            }
         }
         for warning in &catalog.warnings {
             if log == "Process logs will appear here..." {
@@ -589,9 +603,10 @@ impl ToolboxApp {
         self.tx = Some(tx.clone());
         self.rx = Some(rx);
 
+        let base_dir = self.base_dir.clone();
         let repaint = ctx.clone();
         thread::spawn(move || {
-            run_tasks(tasks, password, tx);
+            run_tasks(tasks, password, tx, base_dir);
             repaint.request_repaint();
         });
     }
@@ -1419,6 +1434,13 @@ impl ToolboxApp {
             });
     }
 
+    fn staged_needs_sudo(&self) -> bool {
+        match self.selected_tasks() {
+            Ok(tasks) if !tasks.is_empty() => tasks_need_privileges(&tasks),
+            _ => true,
+        }
+    }
+
     fn sudo_modal(&mut self, ctx: &Context) {
         if !self.show_password_modal {
             return;
@@ -1492,22 +1514,35 @@ impl ToolboxApp {
                         });
                 }
                 ui.add_space(12.0);
-                ui.label(RichText::new("Sudo password").color(palette.muted).strong());
-                ui.add_space(4.0);
-                let response = ui.add(
-                    TextEdit::singleline(&mut self.password)
-                        .password(true)
-                        .hint_text(RichText::new("Required to run").color(palette.muted))
-                        .desired_width(280.0)
-                        .text_color(palette.text)
-                        .background_color(palette.input_fill),
-                );
-                if response.lost_focus()
-                    && ui.input(|input| input.key_pressed(Key::Enter))
-                    && !self.password.is_empty()
-                {
-                    self.show_password_modal = false;
-                    self.run_selected(ctx);
+                let needs_sudo = self.staged_needs_sudo();
+                if needs_sudo {
+                    ui.label(RichText::new("Sudo password").color(palette.muted).strong());
+                    ui.add_space(4.0);
+                    let response = ui.add(
+                        TextEdit::singleline(&mut self.password)
+                            .password(true)
+                            .hint_text(RichText::new("Required to run").color(palette.muted))
+                            .desired_width(280.0)
+                            .text_color(palette.text)
+                            .background_color(palette.input_fill),
+                    );
+                    if response.lost_focus()
+                        && ui.input(|input| input.key_pressed(Key::Enter))
+                        && !self.password.is_empty()
+                    {
+                        self.show_password_modal = false;
+                        self.run_selected(ctx);
+                    }
+                } else {
+                    ui.label(
+                        RichText::new("These tasks run without sudo.")
+                            .color(palette.muted)
+                            .strong(),
+                    );
+                    if ui.input(|input| input.key_pressed(Key::Enter)) {
+                        self.show_password_modal = false;
+                        self.run_selected(ctx);
+                    }
                 }
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
@@ -1523,7 +1558,7 @@ impl ToolboxApp {
                     }
                     if ui
                         .add_enabled(
-                            !self.password.is_empty(),
+                            !needs_sudo || !self.password.is_empty(),
                             Button::new(RichText::new("Confirm").color(palette.cta_text).strong())
                                 .fill(palette.cta_fill)
                                 .stroke(Stroke::new(1.0_f32, palette.cta_fill)),

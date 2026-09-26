@@ -3054,18 +3054,15 @@ fn paint_page_symbol(painter: &Painter, rect: Rect, page: Page, color: Color32) 
             );
         }
         Page::Cursor => {
-            let tip = pos2(rect.left() + 4.0, rect.top() + 3.0);
-            let stem = pos2(rect.left() + 4.0, rect.bottom() - 5.0);
-            let notch = pos2(rect.left() + 9.0, rect.bottom() - 11.0);
-            let tail_left = pos2(rect.left() + 12.0, rect.bottom() - 3.0);
-            let tail_right = pos2(rect.right() - 7.0, rect.bottom() - 7.0);
-            let head = pos2(rect.right() - 3.0, rect.center().y + 1.0);
-            painter.line_segment([tip, stem], stroke);
-            painter.line_segment([stem, notch], stroke);
-            painter.line_segment([notch, tail_left], stroke);
-            painter.line_segment([tail_left, tail_right], stroke);
-            painter.line_segment([tail_right, head], stroke);
-            painter.line_segment([head, tip], stroke);
+            // Northwest arrow in the same 22px box and 1.7 stroke as the other rail marks.
+            let tip = pos2(rect.left() + 2.0, rect.top() + 2.0);
+            let heel = pos2(rect.left() + 9.5, rect.bottom() - 2.0);
+            let notch = pos2(rect.left() + 12.1, rect.top() + 12.1);
+            let wing = pos2(rect.right() - 2.0, rect.top() + 9.5);
+            painter.add(egui::Shape::closed_line(
+                vec![tip, heel, notch, wing],
+                stroke,
+            ));
         }
         Page::System => {
             painter.circle_stroke(rect.center(), rect.width() * 0.28, stroke);

@@ -1,11 +1,11 @@
 //! Lumen theme skins for Toolbox chrome.
 //!
-//! Four families (Teal, Blue/Ocean, Green/Forest, Orange/Ember) each have
-//! Dark and Light modes. Startup default is Teal Dark. Navy/yellow brand
+//! Four families (Blue/Ocean, Green/Forest, Orange/Ember, Teal) each have
+//! Dark and Light modes. Startup default is Blue Dark. Navy/yellow brand
 //! colors stay retired. Green Forest uses leaf `#4ADE80`, not Teal mint.
 //! Orange Ember CTA is `#F97316`; caution chips stay `#FDBA74`.
 //!
-//! Preference is stored as a single `{family}-{mode}` line (example: `teal-dark`)
+//! Preference is stored as a single `{family}-{mode}` line (example: `blue-dark`)
 //! in `$XDG_CONFIG_HOME/linux-it-guy-toolbox/theme`. Legacy files containing
 //! only `dark` or `light` are read as Teal plus that mode. A two-line
 //! `family\nmode` file is accepted on read for compatibility.
@@ -90,15 +90,16 @@ const THEME_FILE_NAME: &str = "theme";
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ThemeFamily {
-    #[default]
     Teal,
+    #[default]
     Blue,
     Green,
     Orange,
 }
 
 impl ThemeFamily {
-    pub const ALL: [Self; 4] = [Self::Teal, Self::Blue, Self::Green, Self::Orange];
+    /// Picker order: alphabetical by the label shown in the rail menu and settings.
+    pub const ALL: [Self; 4] = [Self::Blue, Self::Green, Self::Orange, Self::Teal];
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -826,7 +827,7 @@ mod tests {
         );
 
         assert_eq!(teal_light.cta_fill, ACCENT_BRIGHT);
-        assert_eq!(ThemeFamily::default(), ThemeFamily::Teal);
+        assert_eq!(ThemeFamily::default(), ThemeFamily::Blue);
         assert_eq!(ThemeMode::default(), ThemeMode::Dark);
     }
 
@@ -847,9 +848,42 @@ mod tests {
     }
 
     #[test]
-    fn default_theme_is_lumen_dark() {
+    fn default_theme_is_blue_dark() {
         assert_eq!(ThemeMode::default(), ThemeMode::Dark);
-        assert_eq!(ThemeFamily::default(), ThemeFamily::Teal);
+        assert_eq!(ThemeFamily::default(), ThemeFamily::Blue);
+        assert_eq!(
+            ThemePreference::default(),
+            ThemePreference {
+                family: ThemeFamily::Blue,
+                mode: ThemeMode::Dark,
+            }
+        );
+        let palette = Palette::from(ThemeFamily::default(), ThemeMode::default());
+        assert_eq!(palette.void, BLUE_VOID_DARK);
+        assert_eq!(palette.surface, BLUE_SURFACE_DARK);
+        assert_eq!(palette.elevated, BLUE_ELEVATED_DARK);
+        assert_eq!(palette.text, BLUE_TEXT_DARK);
+        assert_eq!(palette.muted, BLUE_MUTED_DARK);
+        assert_eq!(palette.accent, BLUE_ACCENT_DARK);
+        assert_eq!(palette.accent_on, BLUE_ACCENT_ON_DARK);
+        assert_eq!(palette.cta_fill, BLUE_ACCENT_DARK);
+        assert_eq!(palette.cta_text, BLUE_ACCENT_ON_DARK);
+        assert_eq!(palette.filter_selected_fill, BLUE_ACCENT_DARK);
+        assert_eq!(palette.filter_selected_text, BLUE_ACCENT_ON_DARK);
+        assert_eq!(palette.tile, BLUE_SURFACE_DARK);
+        assert_eq!(
+            palette.tile_selected,
+            mix(BLUE_SURFACE_DARK, BLUE_ACCENT_DARK, 0.14)
+        );
+        assert_eq!(palette.icon_well, BLUE_ELEVATED_DARK);
+        assert_eq!(palette.danger, DANGER);
+        assert_eq!(palette.border.a(), 18);
+        assert_eq!(palette.border_strong.a(), 31);
+        assert_eq!(palette.accent_dim.a(), 36);
+        assert_eq!(palette.caution, CAUTION);
+        assert_eq!(palette.caution_on, CAUTION_ON);
+        assert_ne!(palette.caution, palette.cta_fill);
+
         let palette = Palette::from(ThemeFamily::Teal, ThemeMode::Dark);
         assert_eq!(palette.void, VOID_DARK);
         assert_eq!(palette.surface, SURFACE_DARK);
@@ -872,6 +906,15 @@ mod tests {
         assert_eq!(palette.caution, CAUTION);
         assert_eq!(palette.caution_on, CAUTION_ON);
         assert_ne!(palette.caution, palette.cta_fill);
+    }
+
+    #[test]
+    fn theme_families_are_listed_alphabetically() {
+        let labels: Vec<_> = ThemeFamily::ALL
+            .iter()
+            .map(|family| family.label())
+            .collect();
+        assert_eq!(labels, ["Blue", "Green", "Orange", "Teal"]);
     }
 
     #[test]
@@ -980,7 +1023,7 @@ mod tests {
         assert_eq!(hex(orange.caution_on), "#1C140A");
         assert_ne!(orange.accent, orange.caution);
         assert_ne!(orange.cta_fill, orange.caution);
-        assert_eq!(ThemeFamily::default(), ThemeFamily::Teal);
+        assert_eq!(ThemeFamily::default(), ThemeFamily::Blue);
         assert_eq!(teal.mode, ThemeMode::Dark);
     }
 

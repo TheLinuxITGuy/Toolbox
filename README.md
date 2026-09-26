@@ -20,7 +20,7 @@ A fast Rust desktop app for installing/removing apps and running Linux admin tas
 - **Recipes** for one-click admin playbooks (updates, Bluetooth, TLP, Powertop, and more)
 - **Cursor** to apply a Bibata theme on GNOME immediately, or stage it with app installs and removes
 - **System** page with live machine details
-- **Teal Dark** by default, with Blue/Green/Orange skins and a light/dark toggle on the rail
+- **Blue Dark** by default, with Green, Orange, and Teal skins and a light/dark toggle on the rail
 - Works across multiple distros
 
 ## 🚀 Quick Start

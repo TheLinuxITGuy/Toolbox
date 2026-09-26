@@ -23,6 +23,7 @@ pub const ALLOWED_HELPER_SCRIPTS: &[&str] = &[
     "install-stacer.sh",
     "install-swapfix.sh",
     "install-fastfetch.sh",
+    "apply-cursor.sh",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]

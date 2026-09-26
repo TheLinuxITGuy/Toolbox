@@ -1860,7 +1860,7 @@ fn load_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
     }
     for theme in CursorTheme::ALL {
         let svg = cursor::preview_svg(theme.preview_png());
-        if let Some(raster) = crate::logos::rasterize_svg_markup(&svg, 64) {
+        if let Some(raster) = crate::logos::rasterize_svg_markup(&svg, 256) {
             icons.insert(
                 theme.preview_key(),
                 ctx.load_texture(

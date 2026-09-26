@@ -1,7 +1,8 @@
 //! GNOME Bibata cursor themes.
 //!
-//! Previews are original pointer drawings compiled into the binary. Theme
-//! archives are downloaded only when Apply or the run queue installs one.
+//! Previews are the v2.0.7 `left_ptr.png` bitmaps from the Bibata release,
+//! compiled into the binary. Theme archives are downloaded only when Apply
+//! or the run queue installs one.
 
 use std::path::Path;
 
@@ -95,8 +96,9 @@ pub fn validate_cursor_argv(args: &[String]) -> Result<(), String> {
 
 /// Wrap a compiled-in PNG the same way other UI images are rasterized.
 pub fn preview_svg(png: &[u8]) -> String {
+    // Vendored files are the 256×256 left_ptr bitmaps.
     format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\" viewBox=\"0 0 64 64\"><image width=\"64\" height=\"64\" href=\"data:image/png;base64,{}\"/></svg>",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"256\" height=\"256\" viewBox=\"0 0 256 256\"><image width=\"256\" height=\"256\" href=\"data:image/png;base64,{}\"/></svg>",
         base64_encode(png)
     )
 }
@@ -140,6 +142,212 @@ mod tests {
     use super::*;
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
+
+    fn sha256(bytes: &[u8]) -> String {
+        Sha256::hash(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+
+    /// Compact SHA-256 so the vendored Bibata bitmaps stay pinned without a new crate.
+    struct Sha256 {
+        state: [u32; 8],
+        bits: u64,
+        block: [u8; 64],
+        filled: usize,
+    }
+
+    impl Sha256 {
+        fn hash(bytes: &[u8]) -> [u8; 32] {
+            let mut hasher = Self {
+                state: [
+                    0x6a09_e667,
+                    0xbb67_ae85,
+                    0x3c6e_f372,
+                    0xa54f_f53a,
+                    0x510e_527f,
+                    0x9b05_688c,
+                    0x1f83_d9ab,
+                    0x5be0_cd19,
+                ],
+                bits: 0,
+                block: [0; 64],
+                filled: 0,
+            };
+            hasher.update(bytes);
+            hasher.finish()
+        }
+
+        fn update(&mut self, mut data: &[u8]) {
+            self.bits = self.bits.wrapping_add((data.len() as u64).wrapping_mul(8));
+            if self.filled > 0 {
+                let take = (64 - self.filled).min(data.len());
+                self.block[self.filled..self.filled + take].copy_from_slice(&data[..take]);
+                self.filled += take;
+                data = &data[take..];
+                if self.filled == 64 {
+                    let block = self.block;
+                    self.compress(&block);
+                    self.filled = 0;
+                }
+            }
+            while data.len() >= 64 {
+                self.compress(&data[..64]);
+                data = &data[64..];
+            }
+            if !data.is_empty() {
+                self.block[..data.len()].copy_from_slice(data);
+                self.filled = data.len();
+            }
+        }
+
+        fn finish(mut self) -> [u8; 32] {
+            let bits = self.bits;
+            let mut tail = [0u8; 128];
+            tail[0] = 0x80;
+            let pad = if self.filled < 56 {
+                56 - self.filled
+            } else {
+                120 - self.filled
+            };
+            tail[pad..pad + 8].copy_from_slice(&bits.to_be_bytes());
+            // `update` counts these bytes toward the length; restore the message length.
+            self.update(&tail[..pad + 8]);
+            self.bits = bits;
+            let mut out = [0u8; 32];
+            for (index, word) in self.state.iter().enumerate() {
+                out[index * 4..index * 4 + 4].copy_from_slice(&word.to_be_bytes());
+            }
+            out
+        }
+
+        fn compress(&mut self, block: &[u8]) {
+            const K: [u32; 64] = [
+                0x428a_2f98,
+                0x7137_4491,
+                0xb5c0_fbcf,
+                0xe9b5_dba5,
+                0x3956_c25b,
+                0x59f1_11f1,
+                0x923f_82a4,
+                0xab1c_5ed5,
+                0xd807_aa98,
+                0x1283_5b01,
+                0x2431_85be,
+                0x550c_7dc3,
+                0x72be_5d74,
+                0x80de_b1fe,
+                0x9bdc_06a7,
+                0xc19b_f174,
+                0xe49b_69c1,
+                0xefbe_4786,
+                0x0fc1_9dc6,
+                0x240c_a1cc,
+                0x2de9_2c6f,
+                0x4a74_84aa,
+                0x5cb0_a9dc,
+                0x76f9_88da,
+                0x983e_5152,
+                0xa831_c66d,
+                0xb003_27c8,
+                0xbf59_7fc7,
+                0xc6e0_0bf3,
+                0xd5a7_9147,
+                0x06ca_6351,
+                0x1429_2967,
+                0x27b7_0a85,
+                0x2e1b_2138,
+                0x4d2c_6dfc,
+                0x5338_0d13,
+                0x650a_7354,
+                0x766a_0abb,
+                0x81c2_c92e,
+                0x9272_2c85,
+                0xa2bf_e8a1,
+                0xa81a_664b,
+                0xc24b_8b70,
+                0xc76c_51a3,
+                0xd192_e819,
+                0xd699_0624,
+                0xf40e_3585,
+                0x106a_a070,
+                0x19a4_c116,
+                0x1e37_6c08,
+                0x2748_774c,
+                0x34b0_bcb5,
+                0x391c_0cb3,
+                0x4ed8_aa4a,
+                0x5b9c_ca4f,
+                0x682e_6ff3,
+                0x748f_82ee,
+                0x78a5_636f,
+                0x84c8_7814,
+                0x8cc7_0208,
+                0x90be_fffa,
+                0xa450_6ceb,
+                0xbef9_a3f7,
+                0xc671_78f2,
+            ];
+            let mut words = [0u32; 64];
+            for index in 0..16 {
+                words[index] =
+                    u32::from_be_bytes(block[index * 4..index * 4 + 4].try_into().unwrap());
+            }
+            for index in 16..64 {
+                let s0 = words[index - 15].rotate_right(7)
+                    ^ words[index - 15].rotate_right(18)
+                    ^ (words[index - 15] >> 3);
+                let s1 = words[index - 2].rotate_right(17)
+                    ^ words[index - 2].rotate_right(19)
+                    ^ (words[index - 2] >> 10);
+                words[index] = words[index - 16]
+                    .wrapping_add(s0)
+                    .wrapping_add(words[index - 7])
+                    .wrapping_add(s1);
+            }
+            let mut a = self.state[0];
+            let mut b = self.state[1];
+            let mut c = self.state[2];
+            let mut d = self.state[3];
+            let mut e = self.state[4];
+            let mut f = self.state[5];
+            let mut g = self.state[6];
+            let mut h = self.state[7];
+            for index in 0..64 {
+                let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+                let ch = (e & f) ^ (!e & g);
+                let t1 = h
+                    .wrapping_add(s1)
+                    .wrapping_add(ch)
+                    .wrapping_add(K[index])
+                    .wrapping_add(words[index]);
+                let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+                let maj = (a & b) ^ (a & c) ^ (b & c);
+                let t2 = s0.wrapping_add(maj);
+                h = g;
+                g = f;
+                f = e;
+                e = d.wrapping_add(t1);
+                d = c;
+                c = b;
+                b = a;
+                a = t1.wrapping_add(t2);
+            }
+            let next = [
+                self.state[0].wrapping_add(a),
+                self.state[1].wrapping_add(b),
+                self.state[2].wrapping_add(c),
+                self.state[3].wrapping_add(d),
+                self.state[4].wrapping_add(e),
+                self.state[5].wrapping_add(f),
+                self.state[6].wrapping_add(g),
+                self.state[7].wrapping_add(h),
+            ];
+            self.state = next;
+        }
+    }
+
     use std::path::PathBuf;
     use std::process::Command;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -287,6 +495,10 @@ mod tests {
     #[test]
     fn previews_are_embedded_pngs_and_rasterize_offline() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        assert_eq!(
+            sha256(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
         let mut colors = Vec::new();
         for theme in CursorTheme::ALL {
             let path = root.join("assets/cursors").join(format!(
@@ -296,6 +508,22 @@ mod tests {
             let on_disk =
                 fs::read(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
             assert_eq!(theme.preview_png(), on_disk.as_slice(), "{}", theme.label());
+            assert_eq!(
+                sha256(theme.preview_png()),
+                match theme {
+                    CursorTheme::Classic => {
+                        "b4bd4c1287b1b7d62bf5a992cee319b7fd8a3d3babe42fa7e9105ec98e0f05b1"
+                    }
+                    CursorTheme::Ice => {
+                        "056e5535d634e651a1badb762b2b152fc9e21defb9eef6f907628965039354be"
+                    }
+                    CursorTheme::Amber => {
+                        "119f61f19806aa924ccb77d003e30806304e9274e072eb98cfe85350cc5e7707"
+                    }
+                },
+                "{} must stay the v2.0.7 left_ptr bitmap",
+                theme.label()
+            );
             let svg = preview_svg(theme.preview_png());
             assert!(svg.contains("href=\"data:image/png;base64,"));
             assert!(!svg.contains("href=\"http"));

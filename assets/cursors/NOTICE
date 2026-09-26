@@ -1,0 +1,14 @@
+Bibata cursor previews
+======================
+
+Bibata (GPL-3.0)
+Copyright Abdulkaiz Khatri (ful1e5)
+https://github.com/ful1e5/Bibata_Cursor
+
+Vendored from the v2.0.7 release asset bitmaps.zip:
+https://github.com/ful1e5/Bibata_Cursor/releases/download/v2.0.7/bitmaps.zip
+
+Left-pointer Linux themes only. Each file is that theme's left_ptr.png:
+  bibata-modern-classic.png  bitmaps/Bibata-Modern-Classic/left_ptr.png
+  bibata-modern-ice.png      bitmaps/Bibata-Modern-Ice/left_ptr.png
+  bibata-modern-amber.png    bitmaps/Bibata-Modern-Amber/left_ptr.png

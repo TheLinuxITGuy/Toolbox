@@ -18,7 +18,7 @@ A fast Rust desktop app for installing or removing apps, changing your mouse cur
 - **Home** dashboard with install/setup intents, a live system glance, and recent runs
 - **Apps** to install or remove native packages and Flatpaks, with a Run Dock when items are staged
 - **Recipes** for one-click admin playbooks (updates, Bluetooth, TLP, Powertop, and more)
-- **Cursor** to apply a Bibata theme on GNOME immediately, or stage it with app installs and removes
+- **Cursor** to apply a Bibata theme or the KDE Plasma cursor on GNOME immediately, or stage it with app installs and removes
 - **System** page with live machine details
 - **Blue Dark** by default, with Green, Orange, and Teal skins and a light/dark toggle on the rail
 - Works across multiple distros
@@ -46,7 +46,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 1. Use the rail: **Home**, **Apps**, **Recipes**, **Cursor**, or **System**
 2. On **Apps**, switch **Install** or **Remove**, then stage what you need
 3. On **Recipes**, stage the playbooks you want to run
-4. On **Cursor**, **Apply** installs a Bibata theme if needed and sets it immediately. **Stage** adds that theme to the Run Dock so it runs in one shot with installs and removes
+4. On **Cursor**, **Apply** installs a Bibata theme or the KDE Plasma cursor if needed and sets it immediately. **Stage** adds that theme to the Run Dock so it runs in one shot with installs and removes
 5. When the **Run Dock** appears, click **Review & Run**, enter your sudo password when a staged task needs it, and follow progress in the **Run Drawer** (then Dismiss when you are done)
 
 ![Apps](Screenshot/readme-apps-dark.png)

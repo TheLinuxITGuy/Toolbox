@@ -1,8 +1,8 @@
-//! GNOME Bibata cursor themes.
+//! GNOME cursor themes for the Cursor tab.
 //!
-//! Previews are the v2.0.7 `left_ptr.png` bitmaps from the Bibata release,
-//! compiled into the binary. Theme archives are downloaded only when Apply
-//! or the run queue installs one.
+//! Bibata previews are the v2.0.7 `left_ptr.png` bitmaps. The KDE Plasma
+//! preview is the Breeze `default.svg` pointer (`left_ptr` aliases to it).
+//! Theme archives are downloaded only when Apply or the run queue installs one.
 
 use std::path::Path;
 
@@ -10,22 +10,24 @@ use crate::catalog::{Task, resolve_helper_script};
 
 pub const APPLY_CURSOR_SCRIPT: &str = "apply-cursor.sh";
 
-/// The three left-pointer Bibata Modern themes this tab can apply.
+/// Left-pointer Bibata Modern themes, plus the KDE Plasma Breeze cursor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CursorTheme {
     Classic,
     Ice,
     Amber,
+    Plasma,
 }
 
 impl CursorTheme {
-    pub const ALL: [Self; 3] = [Self::Classic, Self::Ice, Self::Amber];
+    pub const ALL: [Self; 4] = [Self::Classic, Self::Ice, Self::Amber, Self::Plasma];
 
     pub const fn label(self) -> &'static str {
         match self {
             Self::Classic => "Bibata Modern Classic",
             Self::Ice => "Bibata Modern Ice",
             Self::Amber => "Bibata Modern Amber",
+            Self::Plasma => "KDE Plasma cursor",
         }
     }
 
@@ -34,10 +36,11 @@ impl CursorTheme {
             Self::Classic => "Bibata-Modern-Classic",
             Self::Ice => "Bibata-Modern-Ice",
             Self::Amber => "Bibata-Modern-Amber",
+            Self::Plasma => "Breeze",
         }
     }
 
-    /// Pinned v2.0.7 Linux archive. Not `-Right`, not a Windows zip, not latest.
+    /// Pinned download. Bibata is v2.0.7. Plasma is one Breeze commit, not master.
     #[cfg_attr(not(test), allow(dead_code))]
     pub const fn download_url(self) -> &'static str {
         match self {
@@ -50,6 +53,9 @@ impl CursorTheme {
             Self::Amber => {
                 "https://github.com/ful1e5/Bibata_Cursor/releases/download/v2.0.7/Bibata-Modern-Amber.tar.xz"
             }
+            Self::Plasma => {
+                "https://github.com/KDE/breeze/archive/a49f1f8281a25460a88b436e75a46de3afcb9961.tar.gz"
+            }
         }
     }
 
@@ -58,6 +64,7 @@ impl CursorTheme {
             Self::Classic => "cursor-bibata-modern-classic",
             Self::Ice => "cursor-bibata-modern-ice",
             Self::Amber => "cursor-bibata-modern-amber",
+            Self::Plasma => "cursor-kde-plasma",
         }
     }
 
@@ -66,6 +73,16 @@ impl CursorTheme {
             Self::Classic => include_bytes!("../assets/cursors/bibata-modern-classic.png"),
             Self::Ice => include_bytes!("../assets/cursors/bibata-modern-ice.png"),
             Self::Amber => include_bytes!("../assets/cursors/bibata-modern-amber.png"),
+            Self::Plasma => &[],
+        }
+    }
+
+    /// Markup the icon loader rasterizes. Bibata bitmaps stay PNG data-URIs.
+    /// Plasma is the upstream Breeze pointer SVG.
+    pub fn preview_markup(self) -> String {
+        match self {
+            Self::Plasma => include_str!("../assets/cursors/kde-plasma-default.svg").to_owned(),
+            Self::Classic | Self::Ice | Self::Amber => preview_svg(self.preview_png()),
         }
     }
 
@@ -89,7 +106,7 @@ pub fn validate_cursor_argv(args: &[String]) -> Result<(), String> {
         return Err("Cursor helper accepts exactly one theme name.".to_owned());
     }
     if CursorTheme::from_directory(&args[0]).is_none() {
-        return Err("Cursor theme is not one of the Bibata Modern themes.".to_owned());
+        return Err("Cursor theme is not one of the pinned cursor themes.".to_owned());
     }
     Ok(())
 }
@@ -402,18 +419,19 @@ mod tests {
     }
 
     #[test]
-    fn exactly_three_left_pointer_themes() {
-        assert_eq!(CursorTheme::ALL.len(), 3);
+    fn pinned_cursor_themes_are_bibata_and_kde_plasma() {
+        assert_eq!(CursorTheme::ALL.len(), 4);
         let labels: Vec<_> = CursorTheme::ALL.iter().map(|theme| theme.label()).collect();
         assert_eq!(
             labels,
             [
                 "Bibata Modern Classic",
                 "Bibata Modern Ice",
-                "Bibata Modern Amber"
+                "Bibata Modern Amber",
+                "KDE Plasma cursor"
             ]
         );
-        for theme in CursorTheme::ALL {
+        for theme in [CursorTheme::Classic, CursorTheme::Ice, CursorTheme::Amber] {
             assert!(!theme.directory().contains("Right"));
             assert!(!theme.directory().contains("Original"));
             assert!(theme.download_url().ends_with(".tar.xz"));
@@ -421,6 +439,18 @@ mod tests {
             assert!(!theme.download_url().contains("latest"));
             assert!(!theme.download_url().contains("-Right"));
             assert!(!theme.download_url().contains(".zip"));
+        }
+        let plasma = CursorTheme::Plasma;
+        assert_eq!(plasma.directory(), "Breeze");
+        assert!(
+            plasma
+                .download_url()
+                .ends_with("/a49f1f8281a25460a88b436e75a46de3afcb9961.tar.gz")
+        );
+        assert!(!plasma.download_url().contains("master"));
+        assert!(!plasma.download_url().contains("latest"));
+        assert!(CursorTheme::from_directory("Breeze_Light").is_none());
+        for theme in CursorTheme::ALL {
             assert_eq!(CursorTheme::from_directory(theme.directory()), Some(theme));
         }
         assert!(CursorTheme::from_directory("Bibata-Modern-Classic-Right").is_none());
@@ -430,6 +460,8 @@ mod tests {
     #[test]
     fn cursor_argv_is_one_theme_directory() {
         assert!(validate_cursor_argv(&["Bibata-Modern-Amber".into()]).is_ok());
+        assert!(validate_cursor_argv(&["Breeze".into()]).is_ok());
+        assert!(validate_cursor_argv(&["Breeze_Light".into()]).is_err());
         assert!(validate_cursor_argv(&[]).is_err());
         assert!(validate_cursor_argv(&["Bibata-Modern-Ice".into(), "extra".into()]).is_err());
         assert!(validate_cursor_argv(&["Bibata-Modern-Classic-Right".into()]).is_err());
@@ -461,12 +493,29 @@ mod tests {
             );
         }
         for line in script.lines().filter(|line| line.contains("https://")) {
-            assert!(line.contains("/v2.0.7/"), "{line}");
-            assert!(line.contains(".tar.xz"), "{line}");
             assert!(!line.contains("-Right"), "{line}");
             assert!(!line.contains(".zip"), "{line}");
             assert!(!line.contains("latest"), "{line}");
+            assert!(!line.contains("/master"), "{line}");
+            if line.contains("KDE/breeze/archive/") {
+                assert!(line.contains(CursorTheme::Plasma.download_url()), "{line}");
+                assert!(line.contains(".tar.gz"), "{line}");
+                continue;
+            }
+            assert!(line.contains("/v2.0.7/"), "{line}");
+            assert!(line.contains(".tar.xz"), "{line}");
         }
+        let breeze = script
+            .split("install_breeze_from_archive()")
+            .nth(1)
+            .unwrap()
+            .split("download_theme()")
+            .next()
+            .unwrap();
+        assert!(breeze.contains("${HOME}/.local/share/icons"));
+        assert!(breeze.contains("cursors/Breeze/Breeze"));
+        assert!(!breeze.contains("Breeze_Light"));
+        assert!(!breeze.contains("/usr/share"));
         let install = script
             .split("install_theme_from_archive()")
             .nth(1)
@@ -500,7 +549,7 @@ mod tests {
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
         let mut colors = Vec::new();
-        for theme in CursorTheme::ALL {
+        for theme in [CursorTheme::Classic, CursorTheme::Ice, CursorTheme::Amber] {
             let path = root.join("assets/cursors").join(format!(
                 "{}.png",
                 theme.preview_key().trim_start_matches("cursor-")
@@ -520,6 +569,7 @@ mod tests {
                     CursorTheme::Amber => {
                         "119f61f19806aa924ccb77d003e30806304e9274e072eb98cfe85350cc5e7707"
                     }
+                    CursorTheme::Plasma => unreachable!("Bibata bitmap test"),
                 },
                 "{} must stay the v2.0.7 left_ptr bitmap",
                 theme.label()
@@ -546,6 +596,35 @@ mod tests {
         assert_ne!(colors[0], colors[1]);
         assert_ne!(colors[1], colors[2]);
         assert_ne!(colors[0], colors[2]);
+    }
+
+    #[test]
+    fn kde_plasma_preview_is_the_breeze_pointer_svg() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let path = root.join("assets/cursors/kde-plasma-default.svg");
+        let on_disk = fs::read(&path).unwrap();
+        assert_eq!(
+            sha256(&on_disk),
+            "3eb86d995df3bf211ea99fa8ba623fe840dd82afa9cb4b9b7ca8d1a26d7a7cf7"
+        );
+        let markup = CursorTheme::Plasma.preview_markup();
+        assert_eq!(markup.as_bytes(), on_disk.as_slice());
+        assert!(markup.contains("id=\"hotspot\""));
+        assert!(!markup.contains("href=\"http"));
+        let raster = crate::logos::rasterize_svg_markup(&markup, 64)
+            .expect("Breeze pointer SVG failed to rasterize");
+        let dark = raster
+            .rgba
+            .chunks(4)
+            .filter(|px| px[3] > 200 && px[0] < 40 && px[1] < 40 && px[2] < 40)
+            .count();
+        let light = raster
+            .rgba
+            .chunks(4)
+            .filter(|px| px[3] > 200 && px[0] > 200 && px[1] > 200 && px[2] > 200)
+            .count();
+        assert!(dark > 20, "pointer body pixels {dark}");
+        assert!(light > 10, "pointer outline pixels {light}");
     }
 
     #[test]
@@ -577,6 +656,82 @@ mod tests {
             r#"source "$1"; cursor_download_url Bibata-Modern-Amber-Windows"#,
         );
         assert!(!windows.status.success());
+        let plasma = bash(&home.path, r#"source "$1"; cursor_download_url Breeze"#);
+        assert!(plasma.status.success(), "{}", stderr(&plasma));
+        assert_eq!(stdout(&plasma), CursorTheme::Plasma.download_url());
+        let light = bash(
+            &home.path,
+            r#"source "$1"; cursor_download_url Breeze_Light"#,
+        );
+        assert!(!light.status.success());
+    }
+
+    #[test]
+    fn breeze_archive_installs_only_the_plasma_theme_directory() {
+        let home = TempHome::new();
+        let url = CursorTheme::Plasma.download_url();
+        let commit = url.rsplit('/').next().unwrap().trim_end_matches(".tar.gz");
+        let inner = format!("breeze-{commit}/cursors/Breeze/Breeze");
+        let work = home.path.join("work");
+        let theme = work.join(&inner);
+        let cursors = theme.join("cursors");
+        fs::create_dir_all(&cursors).unwrap();
+        fs::write(
+            theme.join("index.theme"),
+            "[Icon Theme]\nName=Breeze Dark\n",
+        )
+        .unwrap();
+        fs::write(cursors.join("default"), "pointer").unwrap();
+        std::os::unix::fs::symlink("default", cursors.join("left_ptr")).unwrap();
+        let archive = home.path.join("breeze.tar.gz");
+        let status = Command::new("tar")
+            .args(["-czf"])
+            .arg(&archive)
+            .arg("-C")
+            .arg(&work)
+            .arg(format!("breeze-{commit}"))
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let output = bash(
+            &home.path,
+            &format!(
+                r#"source "$1"; install_breeze_from_archive "{}""#,
+                archive.display()
+            ),
+        );
+        assert!(output.status.success(), "{}", stderr(&output));
+        let installed = home.path.join(".local/share/icons/Breeze/index.theme");
+        assert!(installed.is_file());
+        assert!(
+            home.path
+                .join(".local/share/icons/Breeze/cursors/left_ptr")
+                .is_symlink()
+        );
+        assert!(!home.path.join(".local/share/icons/Breeze_Light").exists());
+
+        let missing = home.path.join("missing.tar.gz");
+        let empty = home.path.join("empty");
+        fs::create_dir_all(empty.join("breeze-other")).unwrap();
+        let packed = Command::new("tar")
+            .args(["-czf"])
+            .arg(&missing)
+            .arg("-C")
+            .arg(&empty)
+            .arg("breeze-other")
+            .status()
+            .unwrap();
+        assert!(packed.success());
+        let rejected = bash(
+            &home.path,
+            &format!(
+                r#"source "$1"; install_breeze_from_archive "{}""#,
+                missing.display()
+            ),
+        );
+        assert!(!rejected.status.success());
+        assert!(stderr(&rejected).contains("does not contain the Breeze cursor theme"));
     }
 
     fn write_theme(dir: &Path, with_index: bool, symlink: Option<(&str, &str)>) {

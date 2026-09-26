@@ -1,4 +1,5 @@
 mod catalog;
+mod cursor;
 mod logos;
 mod runner;
 mod system;
@@ -21,6 +22,7 @@ use eframe::egui::{
 use catalog::{
     AdminTask, AppEntry, BaseDirSource, CatalogLoad, Task, admin_tasks, find_base_dir, load_apps,
 };
+use cursor::CursorTheme;
 use runner::{RunnerMessage, run_tasks, tasks_need_privileges};
 use system::{
     PackageManager, RemovableApp, RemovableSource, command_output, detect_package_manager,
@@ -50,6 +52,7 @@ enum Page {
     Home,
     Apps,
     Recipes,
+    Cursor,
     System,
 }
 
@@ -59,6 +62,7 @@ impl Page {
             Page::Home => "Home",
             Page::Apps => "Apps",
             Page::Recipes => "Recipes",
+            Page::Cursor => "Cursor",
             Page::System => "System",
         }
     }
@@ -114,6 +118,7 @@ const CONTENT_TWO_COL: f32 = 720.0;
 const INTENT_HEIGHT: f32 = 148.0;
 const GLANCE_HEIGHT: f32 = 80.0;
 const RECIPE_CARD_HEIGHT: f32 = 148.0;
+const CURSOR_CARD_HEIGHT: f32 = 188.0;
 const RECIPE_PIP: f32 = 14.0;
 const DETAIL_ROW_HEIGHT: f32 = 44.0;
 const DETAIL_LABEL_WIDTH: f32 = 200.0;
@@ -143,6 +148,8 @@ struct ToolboxApp {
     install_selected: HashSet<usize>,
     remove_selected: HashSet<usize>,
     admin_selected: HashSet<usize>,
+    cursor_selected: Option<CursorTheme>,
+    direct_cursor: Option<String>,
     install_search: String,
     install_category: Option<String>,
     remove_search: String,
@@ -225,6 +232,8 @@ impl ToolboxApp {
             install_selected: HashSet::new(),
             remove_selected: HashSet::new(),
             admin_selected: HashSet::new(),
+            cursor_selected: None,
+            direct_cursor: None,
             install_search: String::new(),
             install_category: None,
             remove_search: String::new(),
@@ -299,10 +308,11 @@ impl ToolboxApp {
         self.staged_count(AppsMode::Install)
             + self.staged_count(AppsMode::Remove)
             + self.admin_selected.len()
+            + usize::from(self.cursor_selected.is_some())
     }
 
     fn dock_can_appear(&self) -> bool {
-        matches!(self.page, Page::Apps | Page::Recipes)
+        matches!(self.page, Page::Apps | Page::Recipes | Page::Cursor)
     }
 
     fn dock_visible(&self) -> bool {
@@ -316,6 +326,9 @@ impl ToolboxApp {
     fn dock_names(&self) -> Vec<String> {
         let mut names = self.install_selected_names();
         names.extend(self.remove_selected_names());
+        if let Some(theme) = self.cursor_selected {
+            names.push(theme.label().to_owned());
+        }
         names.extend(self.admin_selected_names());
         names
     }
@@ -399,6 +412,16 @@ impl ToolboxApp {
         }
     }
 
+    fn push_cursor_task(&self, tasks: &mut Vec<Task>, errors: &mut Vec<String>) {
+        let Some(theme) = self.cursor_selected else {
+            return;
+        };
+        match theme.try_task(&self.base_dir) {
+            Ok(task) => tasks.push(task),
+            Err(error) => errors.push(format!("{}: {error}", theme.label())),
+        }
+    }
+
     fn push_admin_tasks(&self, tasks: &mut Vec<Task>, errors: &mut Vec<String>) {
         let mut indices: Vec<usize> = self.admin_selected.iter().copied().collect();
         indices.sort_unstable();
@@ -420,6 +443,7 @@ impl ToolboxApp {
         let mut errors = Vec::new();
         self.push_install_tasks(&mut tasks, &mut errors);
         self.push_remove_tasks(&mut tasks, &mut errors);
+        self.push_cursor_task(&mut tasks, &mut errors);
         self.push_admin_tasks(&mut tasks, &mut errors);
         if errors.is_empty() {
             Ok(tasks)
@@ -432,6 +456,7 @@ impl ToolboxApp {
         self.install_selected.clear();
         self.remove_selected.clear();
         self.admin_selected.clear();
+        self.cursor_selected = None;
     }
 
     fn clear_dock_selections(&mut self) {
@@ -444,6 +469,17 @@ impl ToolboxApp {
             if labels.contains(&task.label.as_str()) {
                 self.admin_selected.insert(index);
             }
+        }
+    }
+
+    fn toggle_cursor(&mut self, theme: CursorTheme) {
+        if self.selection_locked() {
+            return;
+        }
+        if self.cursor_selected == Some(theme) {
+            self.cursor_selected = None;
+        } else {
+            self.cursor_selected = Some(theme);
         }
     }
 
@@ -571,6 +607,7 @@ impl ToolboxApp {
         if self.is_running {
             return;
         }
+        self.direct_cursor = None;
 
         let tasks = match self.selected_tasks() {
             Ok(tasks) if !tasks.is_empty() => tasks,
@@ -587,8 +624,27 @@ impl ToolboxApp {
             }
         };
 
-        let (tx, rx) = mpsc::channel();
         let password = std::mem::take(&mut self.password);
+        self.start_tasks(ctx, tasks, password);
+    }
+
+    fn apply_cursor_now(&mut self, ctx: &Context, theme: CursorTheme) {
+        if self.is_running {
+            return;
+        }
+        let task = match theme.try_task(&self.base_dir) {
+            Ok(task) => task,
+            Err(error) => {
+                self.append_log(&format!("[ERROR] {error}"));
+                return;
+            }
+        };
+        self.direct_cursor = Some(theme.label().to_owned());
+        self.start_tasks(ctx, vec![task], String::new());
+    }
+
+    fn start_tasks(&mut self, ctx: &Context, tasks: Vec<Task>, password: String) {
+        let (tx, rx) = mpsc::channel();
         self.log = format!("Queued {} task(s)...", tasks.len());
         self.log_revision = self.log_revision.saturating_add(1);
         self.run_items = tasks
@@ -639,8 +695,19 @@ impl ToolboxApp {
     }
 
     fn finish_run(&mut self) {
-        self.record_recent_run();
-        self.clear_all_selections();
+        if let Some(label) = self.direct_cursor.take() {
+            self.recent_runs.insert(
+                0,
+                RecentRun {
+                    kind: "Cursor".to_owned(),
+                    summary: label,
+                },
+            );
+            self.recent_runs.truncate(8);
+        } else {
+            self.record_recent_run();
+            self.clear_all_selections();
+        }
         self.is_running = false;
         zeroize_string(&mut self.password);
         self.tx = None;
@@ -659,6 +726,9 @@ impl ToolboxApp {
         let remove = self.remove_selected_names();
         if !remove.is_empty() {
             entries.push(("Remove", remove));
+        }
+        if let Some(theme) = self.cursor_selected {
+            entries.push(("Cursor", vec![theme.label().to_owned()]));
         }
         let recipes = self.admin_selected_names();
         if !recipes.is_empty() {
@@ -684,7 +754,13 @@ impl ToolboxApp {
             toolbox_icon(ui, 22.0, &palette);
             ui.add_space(18.0);
 
-            for page in [Page::Home, Page::Apps, Page::Recipes, Page::System] {
+            for page in [
+                Page::Home,
+                Page::Apps,
+                Page::Recipes,
+                Page::Cursor,
+                Page::System,
+            ] {
                 if rail_button(ui, page, self.page == page, &palette).clicked() {
                     self.switch_page(page);
                     if page == Page::Apps && self.apps_mode == AppsMode::Remove {
@@ -1200,6 +1276,58 @@ impl ToolboxApp {
         }
     }
 
+    fn cursor_page(&mut self, ui: &mut Ui) {
+        let palette = self.palette();
+        ui.label(
+            RichText::new("Cursor")
+                .font(FontId::proportional(TITLE_SIZE))
+                .color(palette.text)
+                .strong(),
+        );
+        ui.add_space(6.0);
+        ui.label(
+            RichText::new(
+                "Bibata themes for GNOME. Apply one now, or stage it with installs and removes.",
+            )
+            .color(palette.muted),
+        );
+        ui.add_space(16.0);
+
+        let themes = CursorTheme::ALL;
+        ScrollArea::vertical()
+            .id_salt("cursor_cards")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                let columns = card_columns(ui);
+                self.card_rows(ui, columns, themes.len(), |app, ui, index, width| {
+                    app.cursor_tile(ui, themes[index], width);
+                });
+            });
+    }
+
+    fn cursor_tile(&mut self, ui: &mut Ui, theme: CursorTheme, width: f32) {
+        let selected = self.cursor_selected == Some(theme);
+        let locked = self.selection_locked();
+        let palette = self.palette();
+        let preview = self.icons.get(theme.preview_key()).cloned();
+        let (stage, apply) = cursor_card(
+            ui,
+            width,
+            theme,
+            selected,
+            locked,
+            preview.as_ref(),
+            &palette,
+        );
+        if stage {
+            self.toggle_cursor(theme);
+        }
+        if apply {
+            let ctx = ui.ctx().clone();
+            self.apply_cursor_now(&ctx, theme);
+        }
+    }
+
     fn system_info_page(&mut self, ui: &mut Ui) {
         let palette = self.palette();
         let metrics = self.glance_metrics();
@@ -1275,18 +1403,15 @@ impl ToolboxApp {
             1 => parts.push("remove 1 app".to_owned()),
             n => parts.push(format!("remove {n} apps")),
         }
+        if self.cursor_selected.is_some() {
+            parts.push("set 1 cursor".to_owned());
+        }
         match recipes {
             0 => {}
             1 => parts.push("run 1 recipe".to_owned()),
             n => parts.push(format!("run {n} recipes")),
         }
-        match parts.as_slice() {
-            [] => "Nothing is staged.".to_owned(),
-            [only] => format!("This will {only}."),
-            [a, b] => format!("This will {a} and {b}."),
-            [a, b, c] => format!("This will {a}, {b}, and {c}."),
-            _ => format!("This will {}.", parts.join(", ")),
-        }
+        staged_sentence(&parts)
     }
 
     fn review_groups(&self) -> Vec<(&'static str, Vec<String>)> {
@@ -1298,6 +1423,9 @@ impl ToolboxApp {
         let remove = self.remove_selected_names();
         if !remove.is_empty() {
             groups.push(("Remove", remove));
+        }
+        if let Some(theme) = self.cursor_selected {
+            groups.push(("Cursor", vec![theme.label().to_owned()]));
         }
         let recipes = self.admin_selected_names();
         if !recipes.is_empty() {
@@ -1678,6 +1806,7 @@ impl eframe::App for ToolboxApp {
                 Page::Home => self.home_page(ui),
                 Page::Apps => self.apps_page(ui),
                 Page::Recipes => self.recipes_page(ui),
+                Page::Cursor => self.cursor_page(ui),
                 Page::System => self.system_info_page(ui),
             });
 
@@ -1728,6 +1857,19 @@ fn load_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
                 TextureOptions::LINEAR,
             ),
         );
+    }
+    for theme in CursorTheme::ALL {
+        let svg = cursor::preview_svg(theme.preview_png());
+        if let Some(raster) = crate::logos::rasterize_svg_markup(&svg, 64) {
+            icons.insert(
+                theme.preview_key(),
+                ctx.load_texture(
+                    format!("cursor-{}", theme.preview_key()),
+                    crate::logos::color_image_from_raster(&raster),
+                    TextureOptions::LINEAR,
+                ),
+            );
+        }
     }
     icons
 }
@@ -2403,6 +2545,103 @@ fn recipe_card(
     response
 }
 
+fn cursor_card(
+    ui: &mut Ui,
+    width: f32,
+    theme: CursorTheme,
+    selected: bool,
+    locked: bool,
+    preview: Option<&TextureHandle>,
+    palette: &Palette,
+) -> (bool, bool) {
+    let (rect, _) = ui.allocate_exact_size(vec2(width, CURSOR_CARD_HEIGHT), Sense::hover());
+    paint_card_background(ui.painter(), rect, selected, palette);
+
+    let well = Rect::from_min_size(rect.min + vec2(16.0, 16.0), vec2(64.0, 64.0));
+    ui.painter().rect_filled(well, 12.0, palette.icon_well);
+    if let Some(icon) = preview {
+        ui.painter().image(
+            icon.id(),
+            well.shrink(8.0),
+            Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
+            Color32::WHITE,
+        );
+    }
+
+    let text_left = rect.min.x + 16.0;
+    ui.painter().text(
+        pos2(text_left, rect.min.y + 92.0),
+        Align2::LEFT_TOP,
+        theme.label(),
+        FontId::proportional(15.0),
+        palette.text,
+    );
+    ui.painter().text(
+        pos2(text_left, rect.min.y + 114.0),
+        Align2::LEFT_TOP,
+        theme.directory(),
+        FontId::proportional(12.0),
+        palette.muted,
+    );
+
+    let button = vec2(84.0, 32.0);
+    let apply_rect = Rect::from_min_size(
+        pos2(
+            rect.right() - 16.0 - button.x,
+            rect.bottom() - 16.0 - button.y,
+        ),
+        button,
+    );
+    let stage_rect = Rect::from_min_size(
+        pos2(apply_rect.left() - 8.0 - button.x, apply_rect.top()),
+        button,
+    );
+    let stage_clicked = ui
+        .push_id((theme.directory(), "stage"), |ui| {
+            ui.add_enabled_ui(!locked, |ui| {
+                ui.put(stage_rect, cursor_stage_button(selected, palette))
+                    .clicked()
+            })
+            .inner
+        })
+        .inner;
+    let apply_clicked = ui
+        .push_id((theme.directory(), "apply"), |ui| {
+            ui.add_enabled_ui(!locked, |ui| {
+                ui.put(apply_rect, cursor_apply_button(palette)).clicked()
+            })
+            .inner
+        })
+        .inner;
+    (stage_clicked, apply_clicked)
+}
+
+fn cursor_stage_button(selected: bool, palette: &Palette) -> Button<'_> {
+    let (label, fill, text, stroke) = if selected {
+        ("Staged", palette.accent, palette.accent_on, palette.accent)
+    } else {
+        (
+            "Stage",
+            Color32::TRANSPARENT,
+            palette.text,
+            palette.border_strong,
+        )
+    };
+    Button::new(RichText::new(label).color(text).strong())
+        .fill(fill)
+        .stroke(Stroke::new(1.0, stroke))
+        .corner_radius(16.0)
+        .min_size(vec2(84.0, 32.0))
+}
+
+fn cursor_apply_button(palette: &Palette) -> Button<'_> {
+    Button::new(RichText::new("Apply").color(palette.cta_text).strong())
+        .fill(palette.cta_fill)
+        .stroke(Stroke::new(1.0, palette.cta_fill))
+        .corner_radius(16.0)
+        .min_size(vec2(84.0, 32.0))
+}
+
 fn recipe_display_label(label: &str) -> &str {
     label.strip_suffix(" - Debian only").unwrap_or(label)
 }
@@ -2688,6 +2927,18 @@ fn source_pill_label(source: &str) -> String {
     source.to_ascii_uppercase()
 }
 
+fn staged_sentence(parts: &[String]) -> String {
+    match parts {
+        [] => "Nothing is staged.".to_owned(),
+        [only] => format!("This will {only}."),
+        [a, b] => format!("This will {a} and {b}."),
+        _ => {
+            let (last, rest) = parts.split_last().expect("at least three clauses");
+            format!("This will {}, and {last}.", rest.join(", "))
+        }
+    }
+}
+
 fn truncated_names(names: &[String], max_chars: usize) -> String {
     let joined = names.join(", ");
     if joined.chars().count() <= max_chars {
@@ -2801,6 +3052,20 @@ fn paint_page_symbol(painter: &Painter, rect: Rect, page: Page, color: Color32) 
                 ],
                 stroke,
             );
+        }
+        Page::Cursor => {
+            let tip = pos2(rect.left() + 4.0, rect.top() + 3.0);
+            let stem = pos2(rect.left() + 4.0, rect.bottom() - 5.0);
+            let notch = pos2(rect.left() + 9.0, rect.bottom() - 11.0);
+            let tail_left = pos2(rect.left() + 12.0, rect.bottom() - 3.0);
+            let tail_right = pos2(rect.right() - 7.0, rect.bottom() - 7.0);
+            let head = pos2(rect.right() - 3.0, rect.center().y + 1.0);
+            painter.line_segment([tip, stem], stroke);
+            painter.line_segment([stem, notch], stroke);
+            painter.line_segment([notch, tail_left], stroke);
+            painter.line_segment([tail_left, tail_right], stroke);
+            painter.line_segment([tail_right, head], stroke);
+            painter.line_segment([head, tip], stroke);
         }
         Page::System => {
             painter.circle_stroke(rect.center(), rect.width() * 0.28, stroke);
@@ -3004,6 +3269,8 @@ mod tests {
             install_selected: HashSet::new(),
             remove_selected: HashSet::new(),
             admin_selected: HashSet::new(),
+            cursor_selected: None,
+            direct_cursor: None,
             install_search: String::new(),
             install_category: None,
             remove_search: String::new(),
@@ -3082,22 +3349,39 @@ mod tests {
         let mut app = test_app();
         app.install_selected.insert(0);
         app.remove_selected.insert(0);
+        app.cursor_selected = Some(CursorTheme::Classic);
         app.admin_selected.insert(0);
 
-        assert_eq!(app.total_staged_count(), 3);
+        assert_eq!(app.total_staged_count(), 4);
         assert_eq!(
             app.modal_count_line(),
-            "This will install 1 app, remove 1 app, and run 1 recipe."
+            "This will install 1 app, remove 1 app, set 1 cursor, and run 1 recipe."
+        );
+        assert_eq!(
+            app.dock_names(),
+            vec![
+                "Firefox".to_owned(),
+                "htop".to_owned(),
+                "Bibata Modern Classic".to_owned(),
+                "Update System".to_owned(),
+            ]
         );
         let tasks = app.selected_tasks().expect("combined tasks");
-        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks.len(), 4);
         assert_eq!(tasks[0].description, "Installing Firefox");
         assert_eq!(tasks[0].command.last().map(String::as_str), Some("install"));
         assert_eq!(tasks[1].description, "Removing htop");
         assert_eq!(tasks[1].command.last().map(String::as_str), Some("remove"));
-        assert_eq!(tasks[2].description, "Running Update System");
+        assert_eq!(tasks[2].description, "Applying Bibata Modern Classic");
+        assert_eq!(
+            tasks[2].command.last().map(String::as_str),
+            Some("Bibata-Modern-Classic")
+        );
+        assert!(!crate::runner::command_needs_privileges(&tasks[2].command));
+        assert_eq!(tasks[3].description, "Running Update System");
         assert!(app.install_selected.contains(&0));
         assert!(app.remove_selected.contains(&0));
+        assert_eq!(app.cursor_selected, Some(CursorTheme::Classic));
         assert!(app.admin_selected.contains(&0));
     }
 
@@ -3107,6 +3391,7 @@ mod tests {
         app.install_selected.insert(0);
         app.install_selected.insert(1);
         app.remove_selected.insert(0);
+        app.cursor_selected = Some(CursorTheme::Ice);
         app.admin_selected.insert(0);
 
         assert_eq!(
@@ -3114,6 +3399,7 @@ mod tests {
             vec![
                 ("Install", vec!["Firefox".into(), "VLC".into()]),
                 ("Remove", vec!["htop".into()]),
+                ("Cursor", vec!["Bibata Modern Ice".into()]),
                 ("Recipes", vec!["Update System".into()]),
             ]
         );
@@ -3132,6 +3418,7 @@ mod tests {
             .expect("review_groups body");
         assert!(groups.contains("\"Install\""));
         assert!(groups.contains("\"Remove\""));
+        assert!(groups.contains("\"Cursor\""));
         assert!(groups.contains("\"Recipes\""));
         let modal = src
             .split("fn sudo_modal")
@@ -3155,6 +3442,7 @@ mod tests {
         let mut app = test_app();
         app.install_selected.insert(0);
         app.remove_selected.insert(0);
+        app.cursor_selected = Some(CursorTheme::Amber);
         app.admin_selected.insert(0);
         app.install_search = "firefox".to_owned();
         app.install_category = Some("Browsers".to_owned());
@@ -3167,18 +3455,20 @@ mod tests {
         assert_eq!(app.remove_search, "htop");
         assert!(app.install_selected.contains(&0));
         assert!(app.remove_selected.contains(&0));
+        assert_eq!(app.cursor_selected, Some(CursorTheme::Amber));
         assert_eq!(app.staged_count(AppsMode::Install), 1);
         assert_eq!(app.staged_count(AppsMode::Remove), 1);
-        assert_eq!(app.total_staged_count(), 3);
+        assert_eq!(app.total_staged_count(), 4);
         assert!(app.dock_visible());
 
         app.apps_mode = AppsMode::Install;
         assert!(app.remove_selected.contains(&0));
-        assert_eq!(app.dock_count(), 3);
+        assert_eq!(app.dock_count(), 4);
 
         app.switch_page(Page::Home);
         assert!(app.install_selected.contains(&0));
         assert!(app.remove_selected.contains(&0));
+        assert_eq!(app.cursor_selected, Some(CursorTheme::Amber));
         assert!(!app.dock_visible());
     }
 
@@ -3189,13 +3479,15 @@ mod tests {
         app.install_selected.insert(0);
         app.install_selected.insert(1);
         app.remove_selected.insert(0);
+        app.cursor_selected = Some(CursorTheme::Ice);
         app.admin_selected.insert(0);
 
-        assert_eq!(app.dock_count(), 4);
+        assert_eq!(app.dock_count(), 5);
         assert!(app.dock_visible());
         app.clear_dock_selections();
         assert!(app.install_selected.is_empty());
         assert!(app.remove_selected.is_empty());
+        assert!(app.cursor_selected.is_none());
         assert!(app.admin_selected.is_empty());
         assert!(!app.dock_visible());
     }
@@ -3226,24 +3518,50 @@ mod tests {
         let mut app = test_app();
         app.install_selected.insert(0);
         app.remove_selected.insert(0);
+        app.cursor_selected = Some(CursorTheme::Classic);
         app.admin_selected.insert(0);
         app.is_running = true;
         assert!(app.selection_locked());
         assert!(app.install_selected.contains(&0));
         assert!(app.remove_selected.contains(&0));
+        assert_eq!(app.cursor_selected, Some(CursorTheme::Classic));
         assert!(app.admin_selected.contains(&0));
 
         app.finish_run();
         assert!(!app.is_running);
         assert!(app.install_selected.is_empty());
         assert!(app.remove_selected.is_empty());
+        assert!(app.cursor_selected.is_none());
         assert!(app.admin_selected.is_empty());
         assert!(!app.dock_visible());
         assert!(app.show_run_complete_modal);
-        assert_eq!(app.recent_runs.len(), 3);
+        assert_eq!(app.recent_runs.len(), 4);
+        assert!(
+            app.recent_runs
+                .iter()
+                .any(|run| run.kind == "Cursor" && run.summary.contains("Classic"))
+        );
 
         app.acknowledge_run_complete();
         assert!(!app.show_run_complete_modal);
+    }
+
+    #[test]
+    fn direct_cursor_apply_keeps_staged_install_and_remove() {
+        let mut app = test_app();
+        app.install_selected.insert(0);
+        app.remove_selected.insert(0);
+        app.cursor_selected = Some(CursorTheme::Ice);
+        app.direct_cursor = Some("Bibata Modern Amber".to_owned());
+
+        app.finish_run();
+        assert!(app.install_selected.contains(&0));
+        assert!(app.remove_selected.contains(&0));
+        assert_eq!(app.cursor_selected, Some(CursorTheme::Ice));
+        assert!(app.direct_cursor.is_none());
+        assert_eq!(app.recent_runs.len(), 1);
+        assert_eq!(app.recent_runs[0].kind, "Cursor");
+        assert_eq!(app.recent_runs[0].summary, "Bibata Modern Amber");
     }
 
     #[test]
@@ -3343,6 +3661,7 @@ mod tests {
         let src = production_main();
         assert!(src.contains("enum AppsMode"));
         assert!(src.contains("Page::Apps"));
+        assert!(src.contains("Page::Cursor"));
         assert!(!src.contains("Page::Install"));
         assert!(!src.contains("Page::Remove"));
         assert!(!src.contains("Page::Administration"));
@@ -3704,6 +4023,8 @@ mod tests {
         assert!(app.dock_can_appear());
         app.switch_page(Page::Home);
         assert!(!app.dock_can_appear());
+        app.switch_page(Page::Cursor);
+        assert!(app.dock_can_appear());
         app.switch_page(Page::System);
         assert!(!app.dock_can_appear());
         let src = production_main();

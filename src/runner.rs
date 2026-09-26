@@ -169,6 +169,9 @@ pub fn command_needs_privileges(command: &[String]) -> bool {
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("");
+    if name == "apply-cursor.sh" {
+        return false;
+    }
     if name != "main.sh" {
         return true;
     }
@@ -336,6 +339,8 @@ fn validate_task_command(command: &[String], base_dir: &Path) -> Result<(), Stri
     let extra = &args[1..];
     if name == "main.sh" {
         validate_main_sh_argv(extra).map_err(|error| error.to_string())?;
+    } else if name == "apply-cursor.sh" {
+        crate::cursor::validate_cursor_argv(extra)?;
     } else if !extra.is_empty() {
         return Err("Admin helper scripts do not accept extra arguments.".to_owned());
     }
@@ -442,6 +447,57 @@ mod tests {
             .to_string_lossy()
             .into_owned();
         assert!(validate_task_command(&["bash".into(), script], &toolbox.path).is_ok());
+    }
+
+    #[test]
+    fn validate_task_command_accepts_only_pinned_cursor_themes() {
+        let toolbox = temp_toolbox();
+        fs::write(toolbox.path.join("apply-cursor.sh"), "#!/bin/bash\n").unwrap();
+        let script = toolbox
+            .path
+            .join("apply-cursor.sh")
+            .to_string_lossy()
+            .into_owned();
+        assert!(
+            validate_task_command(
+                &[
+                    "bash".into(),
+                    script.clone(),
+                    "Bibata-Modern-Classic".into()
+                ],
+                &toolbox.path
+            )
+            .is_ok()
+        );
+        assert!(!command_needs_privileges(&[
+            "bash".into(),
+            script.clone(),
+            "Bibata-Modern-Ice".into()
+        ]));
+        assert!(
+            validate_task_command(
+                &[
+                    "bash".into(),
+                    script.clone(),
+                    "Bibata-Modern-Classic-Right".into()
+                ],
+                &toolbox.path
+            )
+            .is_err()
+        );
+        assert!(validate_task_command(&["bash".into(), script.clone()], &toolbox.path).is_err());
+        assert!(
+            validate_task_command(
+                &[
+                    "bash".into(),
+                    script,
+                    "Bibata-Modern-Amber".into(),
+                    "extra".into()
+                ],
+                &toolbox.path
+            )
+            .is_err()
+        );
     }
 
     #[test]

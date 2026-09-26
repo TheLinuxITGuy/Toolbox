@@ -2629,7 +2629,7 @@ fn cursor_stage_button(selected: bool, palette: &Palette) -> Button<'_> {
     };
     Button::new(RichText::new(label).color(text).strong())
         .fill(fill)
-        .stroke(Stroke::new(1.0, stroke))
+        .stroke(Stroke::new(1.0_f32, stroke))
         .corner_radius(16.0)
         .min_size(vec2(84.0, 32.0))
 }
@@ -2637,7 +2637,7 @@ fn cursor_stage_button(selected: bool, palette: &Palette) -> Button<'_> {
 fn cursor_apply_button(palette: &Palette) -> Button<'_> {
     Button::new(RichText::new("Apply").color(palette.cta_text).strong())
         .fill(palette.cta_fill)
-        .stroke(Stroke::new(1.0, palette.cta_fill))
+        .stroke(Stroke::new(1.0_f32, palette.cta_fill))
         .corner_radius(16.0)
         .min_size(vec2(84.0, 32.0))
 }

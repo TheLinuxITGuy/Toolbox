@@ -3,7 +3,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/TheLinuxITGuy/Toolbox?style=for-the-badge&labelColor=%2307080A&color=%235EEAD4)
 ![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TheLinuxITGuy/Toolbox/total?style=for-the-badge&labelColor=%2307080A&color=%235EEAD4)
 
-A fast Rust desktop app for installing/removing apps and running Linux admin tasks with one click.
+A fast Rust desktop app for installing or removing apps, changing your mouse cursor, and running Linux admin tasks with one click.
 
 ![Home](Screenshot/readme-home-dark.png)
 
@@ -32,7 +32,7 @@ cargo build --release
 ./target/release/linux-it-guy-toolbox
 ```
 
-Prebuilt binaries are published on the [GitHub Releases](https://github.com/TheLinuxITGuy/Toolbox/releases) page.
+Releases can be found on the [GitHub Releases](https://github.com/TheLinuxITGuy/Toolbox/releases) page.
 
 If your distribution's `rustc`/`cargo` is older than 1.92:
 

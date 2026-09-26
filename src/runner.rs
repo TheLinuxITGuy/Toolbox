@@ -476,11 +476,30 @@ mod tests {
         ]));
         assert!(
             validate_task_command(
+                &["bash".into(), script.clone(), "Breeze".into()],
+                &toolbox.path
+            )
+            .is_ok()
+        );
+        assert!(!command_needs_privileges(&[
+            "bash".into(),
+            script.clone(),
+            "Breeze".into()
+        ]));
+        assert!(
+            validate_task_command(
                 &[
                     "bash".into(),
                     script.clone(),
                     "Bibata-Modern-Classic-Right".into()
                 ],
+                &toolbox.path
+            )
+            .is_err()
+        );
+        assert!(
+            validate_task_command(
+                &["bash".into(), script.clone(), "Breeze_Light".into()],
                 &toolbox.path
             )
             .is_err()

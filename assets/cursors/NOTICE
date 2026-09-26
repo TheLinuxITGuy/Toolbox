@@ -12,3 +12,14 @@ Left-pointer Linux themes only. Each file is that theme's left_ptr.png:
   bibata-modern-classic.png  bitmaps/Bibata-Modern-Classic/left_ptr.png
   bibata-modern-ice.png      bitmaps/Bibata-Modern-Ice/left_ptr.png
   bibata-modern-amber.png    bitmaps/Bibata-Modern-Amber/left_ptr.png
+
+KDE Plasma cursor preview
+=========================
+
+Breeze cursors (GPL-2.0)
+Copyright the KDE Visual Design Group and contributors
+https://github.com/KDE/breeze/tree/master/cursors
+
+kde-plasma-default.svg is cursors/Breeze/src/svg/default.svg from commit
+a49f1f8281a25460a88b436e75a46de3afcb9961. The installed theme's left_ptr
+cursor is an alias of that pointer. Breeze_Light is not included.

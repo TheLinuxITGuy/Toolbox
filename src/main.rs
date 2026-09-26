@@ -1287,7 +1287,7 @@ impl ToolboxApp {
         ui.add_space(6.0);
         ui.label(
             RichText::new(
-                "Bibata themes for GNOME. Apply one now, or stage it with installs and removes.",
+                "Bibata themes and the KDE Plasma cursor for GNOME. Apply one now, or stage it with installs and removes.",
             )
             .color(palette.muted),
         );
@@ -1859,7 +1859,7 @@ fn load_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
         );
     }
     for theme in CursorTheme::ALL {
-        let svg = cursor::preview_svg(theme.preview_png());
+        let svg = theme.preview_markup();
         if let Some(raster) = crate::logos::rasterize_svg_markup(&svg, 256) {
             icons.insert(
                 theme.preview_key(),

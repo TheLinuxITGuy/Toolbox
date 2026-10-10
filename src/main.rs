@@ -1287,7 +1287,7 @@ impl ToolboxApp {
         ui.add_space(6.0);
         ui.label(
             RichText::new(
-                "Bibata themes and the KDE Plasma cursor for GNOME. Apply one now, or stage it with installs and removes.",
+                "Bibata themes and the KDE Plasma cursor for GNOME and Omarchy. Apply one now, or stage it with installs and removes.",
             )
             .color(palette.muted),
         );

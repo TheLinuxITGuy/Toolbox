@@ -18,7 +18,7 @@ A fast Rust desktop app for installing or removing apps, changing your mouse cur
 - **Home** dashboard with install/setup intents, a live system glance, and recent runs
 - **Apps** to install or remove native packages and Flatpaks, with a Run Dock when items are staged
 - **Recipes** for one-click admin playbooks (updates, Bluetooth, TLP, Powertop, and more)
-- **Cursor** to apply a Bibata theme or the KDE Plasma cursor on GNOME immediately, or stage it with app installs and removes
+- **Cursor** to apply a Bibata theme or the KDE Plasma cursor on GNOME or Omarchy (Hyprland) immediately, or stage it with app installs and removes
 - **System** page with live machine details
 - **Blue Dark** by default, with Green, Orange, and Teal skins and a light/dark toggle on the rail
 - Works across multiple distros

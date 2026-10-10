@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Install a pinned cursor theme for the current user and select it on GNOME.
+# Install a pinned cursor theme for the current user and select it on GNOME
+# or on Omarchy (Hyprland).
 # User-level install only.
 # Bibata themes are the v2.0.7 Linux left-pointer .tar.xz archives, not the
 # -Right themes and not the Windows zips.
@@ -294,6 +295,52 @@ persist_user_cursor() {
     publish_session_cursor "${theme}"
 }
 
+# Omarchy runs Hyprland, which owns the pointer instead of GNOME Shell.
+hyprland_session() {
+    [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] && command -v hyprctl >/dev/null 2>&1
+}
+
+# Hyprland reads the cursor theme from its environment at startup. Keep the
+# theme in a Toolbox-owned file and load it from the user's Hyprland config:
+# hyprland.lua on current Omarchy, hyprland.conf on older releases.
+write_hyprland_cursor_config() {
+    local theme="$1"
+    local hypr_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/hypr"
+    if [[ -f "${hypr_dir}/hyprland.lua" ]]; then
+        cat >"${hypr_dir}/toolbox_cursor.lua" <<EOF
+-- Written by Toolbox when a cursor is applied from the Cursor tab.
+hl.env("XCURSOR_THEME", "${theme}")
+hl.env("HYPRCURSOR_THEME", "${theme}")
+EOF
+        if ! grep -qF 'require("hypr.toolbox_cursor")' "${hypr_dir}/hyprland.lua"; then
+            printf '\n-- Cursor theme set from Toolbox.\nrequire("hypr.toolbox_cursor")\n' \
+                >>"${hypr_dir}/hyprland.lua"
+        fi
+    elif [[ -f "${hypr_dir}/hyprland.conf" ]]; then
+        cat >"${hypr_dir}/toolbox-cursor.conf" <<EOF
+# Written by Toolbox when a cursor is applied from the Cursor tab.
+env = XCURSOR_THEME,${theme}
+env = HYPRCURSOR_THEME,${theme}
+EOF
+        if ! grep -qF 'toolbox-cursor.conf' "${hypr_dir}/hyprland.conf"; then
+            printf '\n# Cursor theme set from Toolbox.\nsource = ~/.config/hypr/toolbox-cursor.conf\n' \
+                >>"${hypr_dir}/hyprland.conf"
+        fi
+    fi
+}
+
+set_hyprland_cursor() {
+    local theme="$1"
+    local size="${XCURSOR_SIZE:-24}"
+    [[ "${size}" =~ ^[0-9]+$ ]] || size=24
+    hyprctl setcursor "${theme}" "${size}" >/dev/null
+    # GTK apps on Hyprland still read the theme from gsettings when it exists.
+    if require_gnome_cursor_schema 2>/dev/null; then
+        gsettings set org.gnome.desktop.interface cursor-theme "${theme}" || true
+    fi
+    write_hyprland_cursor_config "${theme}"
+}
+
 tmpdir=""
 cleanup_cursor_tmp() {
     if [[ -n "${tmpdir}" ]]; then
@@ -309,7 +356,12 @@ main() {
 
     local theme="$1"
     cursor_download_url "${theme}" >/dev/null
-    require_gnome_cursor_schema
+    local desktop="GNOME"
+    if hyprland_session; then
+        desktop="Hyprland"
+    else
+        require_gnome_cursor_schema
+    fi
 
     if theme_is_present "${theme}"; then
         echo "Cursor theme ${theme} is already installed."
@@ -329,9 +381,13 @@ main() {
         fi
     fi
 
-    gsettings set org.gnome.desktop.interface cursor-theme "${theme}"
+    if [[ "${desktop}" == "Hyprland" ]]; then
+        set_hyprland_cursor "${theme}"
+    else
+        gsettings set org.gnome.desktop.interface cursor-theme "${theme}"
+    fi
     persist_user_cursor "${theme}"
-    echo "GNOME cursor theme set to ${theme}."
+    echo "${desktop} cursor theme set to ${theme}."
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

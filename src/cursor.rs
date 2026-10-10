@@ -1,4 +1,4 @@
-//! GNOME cursor themes for the Cursor tab.
+//! GNOME and Omarchy (Hyprland) cursor themes for the Cursor tab.
 //!
 //! Bibata previews are the v2.0.7 `left_ptr.png` bitmaps. The KDE Plasma
 //! preview is the Breeze `default.svg` pointer (`left_ptr` aliases to it).
@@ -909,6 +909,111 @@ mod tests {
         let err = stderr(&output);
         assert!(err.contains("The Cursor tab needs GNOME."), "{err}");
         assert!(err.contains("org.gnome.desktop.interface"));
+    }
+
+    #[test]
+    fn hyprland_lua_config_loads_the_toolbox_cursor_module_once() {
+        let home = TempHome::new();
+        let hypr = home.path.join(".config/hypr");
+        fs::create_dir_all(&hypr).unwrap();
+        fs::write(hypr.join("hyprland.lua"), "require(\"hypr.looknfeel\")").unwrap();
+        for theme in ["Bibata-Modern-Ice", "Breeze"] {
+            let output = bash(
+                &home.path,
+                &format!(r#"source "$1"; write_hyprland_cursor_config {theme}"#),
+            );
+            assert!(output.status.success(), "{}", stderr(&output));
+        }
+        let module = fs::read_to_string(hypr.join("toolbox_cursor.lua")).unwrap();
+        assert!(module.contains("hl.env(\"XCURSOR_THEME\", \"Breeze\")"));
+        assert!(module.contains("hl.env(\"HYPRCURSOR_THEME\", \"Breeze\")"));
+        assert!(!module.contains("Bibata-Modern-Ice"));
+        let config = fs::read_to_string(hypr.join("hyprland.lua")).unwrap();
+        assert!(config.starts_with("require(\"hypr.looknfeel\")\n"));
+        assert_eq!(
+            config.matches("require(\"hypr.toolbox_cursor\")").count(),
+            1
+        );
+    }
+
+    #[test]
+    fn hyprland_conf_config_sources_the_toolbox_cursor_file_once() {
+        let home = TempHome::new();
+        let hypr = home.path.join(".config/hypr");
+        fs::create_dir_all(&hypr).unwrap();
+        fs::write(
+            hypr.join("hyprland.conf"),
+            "source = ~/.config/hypr/input.conf\n",
+        )
+        .unwrap();
+        for _ in 0..2 {
+            let output = bash(
+                &home.path,
+                r#"source "$1"; write_hyprland_cursor_config Bibata-Modern-Amber"#,
+            );
+            assert!(output.status.success(), "{}", stderr(&output));
+        }
+        let env = fs::read_to_string(hypr.join("toolbox-cursor.conf")).unwrap();
+        assert!(env.contains("env = XCURSOR_THEME,Bibata-Modern-Amber"));
+        assert!(env.contains("env = HYPRCURSOR_THEME,Bibata-Modern-Amber"));
+        let config = fs::read_to_string(hypr.join("hyprland.conf")).unwrap();
+        assert_eq!(config.matches("toolbox-cursor.conf").count(), 1);
+        assert!(!hypr.join("toolbox_cursor.lua").exists());
+    }
+
+    #[test]
+    fn hyprland_session_sets_the_cursor_with_hyprctl() {
+        let home = TempHome::new();
+        let bin = home.path.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        fs::write(
+            bin.join("hyprctl"),
+            "#!/bin/bash\necho \"$*\" >>\"$HOME/hyprctl.log\"\n",
+        )
+        .unwrap();
+        // Shadow the real gsettings so the test never touches the session.
+        fs::write(bin.join("gsettings"), "#!/bin/bash\nexit 1\n").unwrap();
+        for tool in ["hyprctl", "gsettings"] {
+            fs::set_permissions(bin.join(tool), fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let run = |signature: Option<&str>, body: &str| {
+            let mut command = Command::new("bash");
+            command
+                .arg("--noprofile")
+                .arg("--norc")
+                .arg("-c")
+                .arg(body)
+                .arg("bash")
+                .arg(script_path())
+                .env("HOME", &home.path)
+                .env("XDG_CONFIG_HOME", home.path.join(".config"))
+                .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+                .env("XCURSOR_SIZE", "32")
+                .env_remove("HYPRLAND_INSTANCE_SIGNATURE");
+            if let Some(signature) = signature {
+                command.env("HYPRLAND_INSTANCE_SIGNATURE", signature);
+            }
+            command.output().unwrap()
+        };
+
+        assert!(
+            !run(None, r#"source "$1"; hyprland_session"#)
+                .status
+                .success()
+        );
+        assert!(
+            run(Some("abc"), r#"source "$1"; hyprland_session"#)
+                .status
+                .success()
+        );
+
+        let output = run(
+            Some("abc"),
+            r#"source "$1"; set_hyprland_cursor Bibata-Modern-Classic"#,
+        );
+        assert!(output.status.success(), "{}", stderr(&output));
+        let log = fs::read_to_string(home.path.join("hyprctl.log")).unwrap();
+        assert_eq!(log, "setcursor Bibata-Modern-Classic 32\n");
     }
 
     #[test]

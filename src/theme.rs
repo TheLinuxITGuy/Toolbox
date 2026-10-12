@@ -41,13 +41,13 @@ const BLUE_SURFACE_DARK: Color32 = Color32::from_rgb(0x0b, 0x0e, 0x13);
 const BLUE_ELEVATED_DARK: Color32 = Color32::from_rgb(0x16, 0x19, 0x1E);
 const BLUE_TEXT_DARK: Color32 = Color32::from_rgb(0xe8, 0xed, 0xf3);
 const BLUE_MUTED_DARK: Color32 = Color32::from_rgb(0x8b, 0x97, 0xa8);
-const BLUE_ACCENT_DARK: Color32 = Color32::from_rgb(0x7a, 0xa5, 0xd2);
+const BLUE_ACCENT_DARK: Color32 = Color32::from_rgb(0x42, 0x85, 0xF4);
 const BLUE_ACCENT_ON_DARK: Color32 = Color32::from_rgb(0x0b, 0x0e, 0x13);
 
 const BLUE_VOID_LIGHT: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
 const BLUE_ELEVATED_LIGHT: Color32 = Color32::from_rgb(0xF4, 0xF7, 0xFB);
-const BLUE_ACCENT_LIGHT: Color32 = Color32::from_rgb(0x41, 0x61, 0x80);
-const BLUE_ACCENT_BRIGHT: Color32 = Color32::from_rgb(0x3B, 0x82, 0xF6);
+const BLUE_ACCENT_LIGHT: Color32 = Color32::from_rgb(0x1A, 0x73, 0xE8);
+const BLUE_ACCENT_BRIGHT: Color32 = Color32::from_rgb(0x42, 0x85, 0xF4);
 const BLUE_ACCENT_ON_LIGHT: Color32 = Color32::from_rgb(0xEF, 0xF6, 0xFF);
 
 const GREEN_VOID_DARK: Color32 = Color32::from_rgb(0x0a, 0x11, 0x0c);
@@ -785,7 +785,7 @@ mod tests {
         assert_eq!(hex(blue_dark.elevated), "#16191E");
         assert_eq!(hex(blue_dark.text), "#E8EDF3");
         assert_eq!(hex(blue_dark.muted), "#8B97A8");
-        assert_eq!(hex(blue_dark.accent), "#7AA5D2");
+        assert_eq!(hex(blue_dark.accent), "#4285F4");
         assert_eq!(hex(blue_dark.accent_on), "#0B0E13");
         assert_eq!(blue_dark.accent_dim.a(), 33);
 
@@ -794,8 +794,8 @@ mod tests {
         assert_eq!(hex(blue_light.elevated), "#F4F7FB");
         assert_eq!(hex(blue_light.text), "#0B1220");
         assert_eq!(hex(blue_light.muted), "#64748B");
-        assert_eq!(hex(blue_light.accent), "#416180");
-        assert_eq!(hex(blue_light.accent_bright), "#3B82F6");
+        assert_eq!(hex(blue_light.accent), "#1A73E8");
+        assert_eq!(hex(blue_light.accent_bright), "#4285F4");
         assert_eq!(hex(blue_light.accent_on), "#EFF6FF");
         assert_eq!(blue_light.accent_dim.a(), 31);
 
@@ -1013,7 +1013,7 @@ mod tests {
 
         assert_eq!(hex(blue.void), "#0B0E13");
         assert_eq!(hex(blue.surface), "#0B0E13");
-        assert_eq!(hex(blue.accent), "#7AA5D2");
+        assert_eq!(hex(blue.accent), "#4285F4");
         assert_eq!(blue.cta_fill, blue.accent);
         assert_eq!(blue.filter_selected_fill, blue.accent);
         assert_eq!(

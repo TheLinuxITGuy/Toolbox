@@ -15,12 +15,12 @@ A fast Rust desktop app for installing or removing apps, changing your mouse cur
 
 ## ✨ What It Does
 
-- **Home** dashboard with install/setup intents, a live system glance, and recent runs
-- **Apps** to install or remove native packages and Flatpaks, with a Run Dock when items are staged
+- **Home** with three quick tasks (install apps, set up a new computer, make your battery last), your computer at a glance, and recent activity
+- **Apps** to install or remove native packages and Flatpaks, with a floating queue pill when items are staged
 - **Recipes** for one-click admin playbooks (updates, Bluetooth, TLP, Powertop, and more)
 - **Cursor** to apply a Bibata theme or the KDE Plasma cursor on GNOME or Omarchy (Hyprland) immediately, or stage it with app installs and removes
-- **System** page with live machine details
-- **Blue Dark** by default, with Green, Orange, and Teal skins and a light/dark toggle on the rail
+- **System** page with live processor, memory, and storage details
+- **Blue** by default, with Green, Orange, Teal, and a white Light skin picked from the swatches in the top bar
 - Works across multiple distros
 
 ## 🚀 Quick Start
@@ -43,11 +43,11 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 ## 📖 Usage
 
-1. Use the rail: **Home**, **Apps**, **Recipes**, **Cursor**, or **System**
-2. On **Apps**, switch **Install** or **Remove**, then stage what you need
+1. Use the tabs along the top: **Home**, **Apps**, **Recipes**, **Cursor**, or **System**
+2. On **Apps**, switch **Install** or **Uninstall**, then stage what you need
 3. On **Recipes**, stage the playbooks you want to run
-4. On **Cursor**, **Apply** installs a Bibata theme or the KDE Plasma cursor if needed and sets it immediately. **Stage** adds that theme to the Run Dock so it runs in one shot with installs and removes
-5. When the **Run Dock** appears, click **Review & Run**, enter your sudo password when a staged task needs it, and follow progress in the **Run Drawer** (then Dismiss when you are done)
+4. On **Cursor**, **Use ... now** installs a Bibata theme or the KDE Plasma cursor if needed and sets it immediately. **Add to queue** adds that theme to the queue so it runs in one shot with installs and removes
+5. When the queue pill appears, click **Review & run**, enter your password when a queued task needs it, and follow progress in the drawer on the right (then Close when it says All done)
 
 ![Apps](Screenshot/readme-apps-dark.png)
 

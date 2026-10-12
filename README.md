@@ -1,7 +1,7 @@
 # 🧰 The Linux IT Guy Toolbox
 
-![GitHub Release](https://img.shields.io/github/v/release/TheLinuxITGuy/Toolbox?style=for-the-badge&labelColor=%2307080A&color=%235EEAD4)
-![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TheLinuxITGuy/Toolbox/total?style=for-the-badge&labelColor=%2307080A&color=%235EEAD4)
+![GitHub Release](https://img.shields.io/github/v/release/TheLinuxITGuy/Toolbox?style=for-the-badge&labelColor=%230B0E13&color=%237AA5D2)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/TheLinuxITGuy/Toolbox/total?style=for-the-badge&labelColor=%230B0E13&color=%237AA5D2)
 
 A fast Rust desktop app for installing or removing apps, changing your mouse cursor, and running Linux admin tasks with one click.
 
@@ -9,9 +9,9 @@ A fast Rust desktop app for installing or removing apps, changing your mouse cur
 
 > [!NOTE]
 > #### Supported Distros
-> ![Static Badge](https://img.shields.io/badge/Arch-%2307080A?style=for-the-badge&logo=arch%20linux&logoColor=%235EEAD4)
-> ![Static Badge](https://img.shields.io/badge/Debian-%2307080A?style=for-the-badge&logo=debian&logoColor=%235EEAD4)
-> ![Static Badge](https://img.shields.io/badge/Fedora-%2307080A?style=for-the-badge&logo=fedora&logoColor=%235EEAD4)
+> ![Static Badge](https://img.shields.io/badge/Arch-%230B0E13?style=for-the-badge&logo=arch%20linux&logoColor=%237AA5D2)
+> ![Static Badge](https://img.shields.io/badge/Debian-%230B0E13?style=for-the-badge&logo=debian&logoColor=%237AA5D2)
+> ![Static Badge](https://img.shields.io/badge/Fedora-%230B0E13?style=for-the-badge&logo=fedora&logoColor=%237AA5D2)
 
 ## ✨ What It Does
 

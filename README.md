@@ -5,7 +5,7 @@
 
 A fast Rust desktop app for installing or removing apps, changing your mouse cursor, and running Linux admin tasks with one click.
 
-![Home](Screenshot/readme-home-dark.png)
+![Apps](Screenshot/readme-apps-dark.png)
 
 > [!NOTE]
 > #### Supported Distros
@@ -48,12 +48,6 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 3. On **Recipes**, stage the playbooks you want to run
 4. On **Cursor**, **Use ... now** installs a Bibata theme or the KDE Plasma cursor if needed and sets it immediately. **Add to queue** adds that theme to the queue so it runs in one shot with installs and removes
 5. When the queue pill appears, click **Review & run**, enter your password when a queued task needs it, and follow progress in the drawer on the right (then Close when it says All done)
-
-![Apps](Screenshot/readme-apps-dark.png)
-
-![Recipes](Screenshot/readme-recipes-dark.png)
-
-![System](Screenshot/readme-system-dark.png)
 
 ## 🔧 Requirements
 

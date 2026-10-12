@@ -530,6 +530,97 @@ fn command_stdout(program: &str, args: &[&str]) -> Result<String, String> {
     String::from_utf8(output.stdout).map_err(|_| format!("{program} output is not valid UTF-8"))
 }
 
+/// Point-in-time hardware numbers for the System tab.
+#[derive(Clone, Debug, Default)]
+pub struct HardwareSnapshot {
+    pub cpu_model: String,
+    pub cpu_cores: usize,
+    /// One-minute load average as a 0..=1 share of all cores.
+    pub cpu_load: f32,
+    pub mem_used_kb: u64,
+    pub mem_total_kb: u64,
+    pub swap_used_kb: u64,
+    pub swap_total_kb: u64,
+    pub disk_used_kb: u64,
+    pub disk_total_kb: u64,
+    pub disk_fs: String,
+}
+
+impl HardwareSnapshot {
+    pub fn read() -> Self {
+        let cpuinfo = fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
+        let cpu_model = cpuinfo
+            .lines()
+            .find_map(|line| {
+                line.strip_prefix("model name")
+                    .and_then(|rest| rest.split_once(':'))
+                    .map(|(_, value)| value.trim().to_owned())
+            })
+            .unwrap_or_else(|| "Unknown".to_owned());
+        let cpu_cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+        let load = fs::read_to_string("/proc/loadavg")
+            .ok()
+            .and_then(|text| {
+                text.split_whitespace()
+                    .next()
+                    .and_then(|v| v.parse::<f32>().ok())
+            })
+            .unwrap_or(0.0);
+        let meminfo = fs::read_to_string("/proc/meminfo").unwrap_or_default();
+        let field = |name: &str| -> u64 {
+            meminfo
+                .lines()
+                .find_map(|line| line.strip_prefix(name)?.strip_prefix(':'))
+                .and_then(|rest| rest.split_whitespace().next()?.parse().ok())
+                .unwrap_or(0)
+        };
+        let mem_total_kb = field("MemTotal");
+        let swap_total_kb = field("SwapTotal");
+        let (disk_total_kb, disk_used_kb, disk_fs) = parse_df(&command_output(
+            "df",
+            &["-P", "-T", "-k", "/"],
+        ))
+        .unwrap_or((0, 0, "Unknown".to_owned()));
+        Self {
+            cpu_model,
+            cpu_cores,
+            cpu_load: (load / cpu_cores as f32).clamp(0.0, 1.0),
+            mem_used_kb: mem_total_kb.saturating_sub(field("MemAvailable")),
+            mem_total_kb,
+            swap_used_kb: swap_total_kb.saturating_sub(field("SwapFree")),
+            swap_total_kb,
+            disk_used_kb,
+            disk_total_kb,
+            disk_fs,
+        }
+    }
+}
+
+/// Parses `df -P -T -k /` into (total, used, filesystem type).
+fn parse_df(output: &str) -> Option<(u64, u64, String)> {
+    let line = output.lines().nth(1)?;
+    let cols: Vec<&str> = line.split_whitespace().collect();
+    if cols.len() < 4 {
+        return None;
+    }
+    Some((
+        cols[2].parse().ok()?,
+        cols[3].parse().ok()?,
+        cols[1].to_owned(),
+    ))
+}
+
+pub fn format_kb(kb: u64) -> String {
+    let gb = kb as f64 / 1024.0 / 1024.0;
+    if gb >= 100.0 {
+        format!("{gb:.0} GB")
+    } else if gb >= 1.0 {
+        format!("{gb:.1} GB")
+    } else {
+        format!("{:.0} MB", kb as f64 / 1024.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -105,32 +105,30 @@ const INSTALL_CATEGORIES: &[&str] = &[
     "Office Tools",
     "Utilities",
 ];
-const RAIL_WIDTH: f32 = 68.0;
-const CARD_HEIGHT: f32 = 164.0;
-const CARD_ICON: f32 = 44.0;
-const CARD_GAP: f32 = 12.0;
-const CARD_RADIUS: f32 = 12.0;
+const TOPBAR_HEIGHT: f32 = 60.0;
+const CARD_HEIGHT: f32 = 178.0;
+const CARD_ICON: f32 = 40.0;
+const CARD_GAP: f32 = 14.0;
+const CARD_RADIUS: f32 = 0.0;
 const CHECK_SIZE: f32 = 22.0;
-const SEARCH_HEIGHT: f32 = 44.0;
+const SEARCH_HEIGHT: f32 = 48.0;
 const DOCK_MIN_WIDTH: f32 = 520.0;
-const DOCK_RADIUS: f32 = 22.0;
+const RUN_DRAWER_WIDTH: f32 = 460.0;
+const DOCK_RADIUS: f32 = 0.0;
 const CONTENT_TWO_COL: f32 = 720.0;
-const INTENT_HEIGHT: f32 = 148.0;
-const GLANCE_HEIGHT: f32 = 80.0;
-const RECIPE_CARD_HEIGHT: f32 = 148.0;
-const CURSOR_CARD_HEIGHT: f32 = 188.0;
-const RECIPE_PIP: f32 = 14.0;
-const DETAIL_ROW_HEIGHT: f32 = 44.0;
-const DETAIL_LABEL_WIDTH: f32 = 200.0;
-const TITLE_SIZE: f32 = 26.0;
-const FRESH_SETUP_LABELS: &[&str] = &["Update System", "Fastfetch"];
+const INTENT_HEIGHT: f32 = 190.0;
+const GLANCE_HEIGHT: f32 = 84.0;
+const RECIPE_ROW_HEIGHT: f32 = 84.0;
+const CURSOR_CARD_HEIGHT: f32 = 306.0;
+const TITLE_SIZE: f32 = 44.0;
 const LAPTOP_POWER_LABELS: &[&str] = &["TLP (Laptops)", "Powertop"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Glyph {
-    Plus,
+    /// Same mark as the matching top-bar tab.
+    Tab(Page),
     Bolt,
-    Briefcase,
+    Battery,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -155,9 +153,7 @@ struct ToolboxApp {
     remove_search: String,
     distro_name: String,
     package_manager: PackageManager,
-    host: String,
     kernel: String,
-    shell: String,
     de_wm: String,
     recent_runs: Vec<RecentRun>,
     log: String,
@@ -176,6 +172,8 @@ struct ToolboxApp {
     remove_apps: Vec<RemovableApp>,
     remove_scan: RemoveScanState,
     remove_scan_rx: Option<Receiver<Result<Vec<RemovableApp>, String>>>,
+    toast: Option<(String, std::time::Instant)>,
+    hardware: system::HardwareSnapshot,
 }
 
 impl ToolboxApp {
@@ -239,9 +237,7 @@ impl ToolboxApp {
             remove_search: String::new(),
             distro_name,
             package_manager,
-            host: command_output("hostname", &[]),
             kernel: command_output("uname", &["-r"]),
-            shell: env_or_unknown(&["SHELL"]),
             de_wm: env_or_unknown(&["XDG_CURRENT_DESKTOP", "DESKTOP_SESSION"]),
             recent_runs: Vec::new(),
             log,
@@ -260,6 +256,8 @@ impl ToolboxApp {
             remove_apps: Vec::new(),
             remove_scan: RemoveScanState::Idle,
             remove_scan_rx: None,
+            toast: None,
+            hardware: system::HardwareSnapshot::default(),
         }
     }
 
@@ -280,20 +278,24 @@ impl ToolboxApp {
         }
     }
 
-    fn toggle_theme(&mut self, ctx: &Context) {
-        self.theme = self.theme.toggle();
-        self.persist_theme(ctx);
-    }
-
-    fn set_family(&mut self, ctx: &Context, family: ThemeFamily) {
-        if self.family == family {
+    /// Picks one of the five skins: four dark families, or the white Light skin.
+    fn set_skin(&mut self, ctx: &Context, family: ThemeFamily, mode: ThemeMode) {
+        if self.family == family && self.theme == mode {
             return;
         }
         self.family = family;
+        self.theme = mode;
         self.persist_theme(ctx);
     }
 
+    fn show_toast(&mut self, message: impl Into<String>) {
+        self.toast = Some((message.into(), std::time::Instant::now()));
+    }
+
     fn switch_page(&mut self, page: Page) {
+        if page == Page::System && self.page != Page::System {
+            self.hardware = system::HardwareSnapshot::read();
+        }
         self.page = page;
     }
 
@@ -311,12 +313,8 @@ impl ToolboxApp {
             + usize::from(self.cursor_selected.is_some())
     }
 
-    fn dock_can_appear(&self) -> bool {
-        matches!(self.page, Page::Apps | Page::Recipes | Page::Cursor)
-    }
-
     fn dock_visible(&self) -> bool {
-        !self.is_running && self.dock_can_appear() && self.total_staged_count() > 0
+        !self.is_running && self.total_staged_count() > 0
     }
 
     fn dock_count(&self) -> usize {
@@ -489,13 +487,12 @@ impl ToolboxApp {
     }
 
     fn go_fresh_setup(&mut self) {
-        self.preselect_admin_labels(FRESH_SETUP_LABELS);
         self.switch_page(Page::Recipes);
     }
 
     fn go_laptop_power(&mut self) {
         self.preselect_admin_labels(LAPTOP_POWER_LABELS);
-        self.switch_page(Page::Recipes);
+        self.show_toast("Added the battery recipes to your queue");
     }
 
     fn go_system(&mut self) {
@@ -696,6 +693,10 @@ impl ToolboxApp {
 
     fn finish_run(&mut self) {
         if let Some(label) = self.direct_cursor.take() {
+            self.show_toast(format!(
+                "Cursor changed to {}",
+                cursor_short_name_for(&label)
+            ));
             self.recent_runs.insert(
                 0,
                 RecentRun {
@@ -747,13 +748,41 @@ impl ToolboxApp {
         self.recent_runs.truncate(8);
     }
 
-    fn rail(&mut self, ui: &mut Ui) {
+    fn topbar(&mut self, ui: &mut Ui) {
         let palette = self.palette();
-        ui.vertical_centered(|ui| {
-            ui.add_space(10.0);
-            toolbox_icon(ui, 22.0, &palette);
-            ui.add_space(18.0);
-
+        let mut next_family = None;
+        let mut next_light = false;
+        let mut open_queue = false;
+        let queue_count = if self.dock_visible() {
+            self.dock_count()
+        } else {
+            0
+        };
+        ui.horizontal_centered(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            let compact = ui.available_width() < 1100.0;
+            match self.icons.get("toolbox-logo") {
+                Some(logo) => {
+                    let (rect, _) = ui.allocate_exact_size(vec2(36.0, 36.0), Sense::hover());
+                    ui.painter().image(
+                        logo.id(),
+                        rect,
+                        Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
+                        Color32::WHITE,
+                    );
+                }
+                None => toolbox_icon(ui, 30.0, &palette),
+            }
+            if !compact {
+                ui.add_space(10.0);
+                ui.label(
+                    RichText::new("Toolbox")
+                        .font(FontId::proportional(20.0))
+                        .color(palette.text)
+                        .strong(),
+                );
+            }
+            ui.add_space(if compact { 12.0 } else { 36.0 });
             for page in [
                 Page::Home,
                 Page::Apps,
@@ -761,33 +790,48 @@ impl ToolboxApp {
                 Page::Cursor,
                 Page::System,
             ] {
-                if rail_button(ui, page, self.page == page, &palette).clicked() {
+                let badge = if page == Page::Apps {
+                    self.install_selected.len() + self.remove_selected.len()
+                } else {
+                    0
+                };
+                if tab_button(ui, page, self.page == page, badge, compact, &palette).clicked() {
                     self.switch_page(page);
                     if page == Page::Apps && self.apps_mode == AppsMode::Remove {
                         let ctx = ui.ctx().clone();
                         self.start_remove_scan(&ctx);
                     }
                 }
-                ui.add_space(8.0);
             }
-        });
-
-        ui.with_layout(Layout::bottom_up(Align::Center), |ui| {
-            ui.add_space(14.0);
-            let toggle = theme_toggle_button(ui, &palette);
-            if toggle.clicked() {
-                let ctx = ui.ctx().clone();
-                self.toggle_theme(&ctx);
-            }
-            let mut picked = None;
-            toggle.context_menu(|ui| {
-                picked = appearance_picker(ui, self.family, self.theme, &palette);
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                if light_swatch(ui, self.theme == ThemeMode::Light, &palette).clicked() {
+                    next_light = true;
+                }
+                for family in ThemeFamily::ALL.into_iter().rev().filter(|_| !compact) {
+                    let selected = self.theme == ThemeMode::Dark && family == self.family;
+                    if family_swatch(ui, family, selected, &palette).clicked() {
+                        next_family = Some(family);
+                    }
+                }
+                if queue_count > 0 {
+                    ui.add_space(8.0);
+                    if queue_button(ui, queue_count, &palette).clicked() {
+                        open_queue = true;
+                    }
+                }
             });
-            if let Some(family) = picked {
-                let ctx = ui.ctx().clone();
-                self.set_family(&ctx, family);
-            }
         });
+        let ctx = ui.ctx().clone();
+        if next_light {
+            self.set_skin(&ctx, ThemeFamily::Blue, ThemeMode::Light);
+        }
+        if let Some(family) = next_family {
+            self.set_skin(&ctx, family, ThemeMode::Dark);
+        }
+        if open_queue {
+            self.show_password_modal = true;
+        }
     }
 
     fn apps_page(&mut self, ui: &mut Ui) {
@@ -802,12 +846,23 @@ impl ToolboxApp {
     fn apps_header(&mut self, ui: &mut Ui) {
         let palette = self.palette();
         ui.horizontal(|ui| {
-            ui.label(
-                RichText::new("Apps")
-                    .font(FontId::proportional(TITLE_SIZE))
-                    .color(palette.text)
-                    .strong(),
-            );
+            ui.vertical(|ui| {
+                ui.label(
+                    RichText::new("Apps")
+                        .font(FontId::proportional(TITLE_SIZE))
+                        .color(palette.text)
+                        .strong(),
+                );
+                ui.label(
+                    RichText::new(match self.apps_mode {
+                        AppsMode::Install => {
+                            "Tick the apps you want. Nothing installs until you press Run."
+                        }
+                        AppsMode::Remove => "Tick the apps you want to take off this computer.",
+                    })
+                    .color(palette.muted),
+                );
+            });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if let Some(mode) = mode_segment(ui, self.apps_mode, &palette) {
                     self.apps_mode = mode;
@@ -825,8 +880,8 @@ impl ToolboxApp {
             AppsMode::Remove => &mut self.remove_search,
         };
         let hint = match self.apps_mode {
-            AppsMode::Install => "Search apps...",
-            AppsMode::Remove => "Search installed apps...",
+            AppsMode::Install => "Search apps by name…",
+            AppsMode::Remove => "Search installed apps by name…",
         };
         search_field(ui, search, hint, &palette);
 
@@ -1045,60 +1100,16 @@ impl ToolboxApp {
     }
 
     fn ready_line(&self) -> String {
-        format!(
-            "{} is ready · package manager {}",
-            self.distro_name, self.package_manager
-        )
+        format!("{} is ready.", self.distro_name)
     }
 
     fn glance_metrics(&self) -> [(&'static str, String); 4] {
         [
-            ("OS", self.distro_name.clone()),
+            ("Operating system", self.distro_name.clone()),
             ("Kernel", self.kernel.clone()),
-            ("Uptime", uptime_compact()),
-            ("Packages", self.package_manager.to_string()),
+            ("Running for", uptime_compact()),
+            ("Installs with", self.package_manager.to_string()),
         ]
-    }
-
-    fn system_detail_rows(&self) -> [(&'static str, String); 8] {
-        [
-            ("OS", self.distro_name.clone()),
-            ("Host", self.host.clone()),
-            ("Kernel", self.kernel.clone()),
-            ("Uptime", uptime_prose()),
-            ("Shell", self.shell.clone()),
-            ("DE/WM", self.de_wm.clone()),
-            ("Package Manager", self.package_manager.to_string()),
-            ("App Directory", self.base_dir.display().to_string()),
-        ]
-    }
-
-    fn recipe_groups(&self) -> Vec<(String, Vec<usize>)> {
-        let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
-        for (index, task) in self.admin_tasks.iter().enumerate() {
-            if let Some((_, items)) = groups
-                .iter_mut()
-                .find(|(category, _)| category == &task.category)
-            {
-                items.push(index);
-            } else {
-                groups.push((task.category.clone(), vec![index]));
-            }
-        }
-        for (_, items) in &mut groups {
-            items.sort_by_key(|index| {
-                (
-                    recipe_display_rank(
-                        self.admin_tasks
-                            .get(*index)
-                            .map(|task| task.label.as_str())
-                            .unwrap_or(""),
-                    ),
-                    *index,
-                )
-            });
-        }
-        groups
     }
 
     fn home_page(&mut self, ui: &mut Ui) {
@@ -1107,62 +1118,59 @@ impl ToolboxApp {
             .id_salt("home_page")
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(greeting())
-                            .font(FontId::proportional(TITLE_SIZE))
-                            .color(palette.text)
-                            .strong(),
-                    );
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        status_pill(ui, "System up to date", &palette);
-                    });
-                });
-                ui.add_space(6.0);
+                ui.label(
+                    RichText::new("What would you like to do?")
+                        .font(FontId::proportional(TITLE_SIZE))
+                        .color(palette.text)
+                        .strong(),
+                );
+                ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     let (dot, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
-                    ui.painter()
-                        .circle_filled(dot.center(), 3.5, palette.accent);
+                    ui.painter().rect_filled(dot, 0.0, palette.accent);
                     ui.add_space(4.0);
                     ui.label(RichText::new(self.ready_line()).color(palette.muted));
                 });
-                ui.add_space(20.0);
+                ui.add_space(28.0);
 
                 let intents = [
                     (
-                        Glyph::Plus,
+                        Glyph::Tab(Page::Apps),
                         "Install apps",
-                        "Browse the catalog and stage what you need.",
+                        "Browse the catalog and pick what you need.",
+                        "Browse apps",
                     ),
                     (
-                        Glyph::Bolt,
-                        "Fresh setup",
-                        "Jump to Recipes for essentials after a distro hop.",
+                        Glyph::Tab(Page::Recipes),
+                        "Set up a new computer",
+                        "One-click recipes for updates, Bluetooth and essentials.",
+                        "See recipes",
                     ),
                     (
-                        Glyph::Briefcase,
-                        "Laptop power",
-                        "TLP + Powertop tuned so the battery lasts.",
+                        Glyph::Battery,
+                        "Make your battery last",
+                        "TLP and Powertop tuned for laptops.",
+                        "Add to queue",
                     ),
                 ];
                 let columns = intent_columns(ui);
-                let width = tile_width(ui, columns);
+                let width = tile_width_gap(ui, columns, 22.0);
                 let mut chosen = None;
                 for (row_index, row) in intents.chunks(columns).enumerate() {
                     if row_index > 0 {
-                        ui.add_space(CARD_GAP);
+                        ui.add_space(22.0);
                     }
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = CARD_GAP;
-                        for (offset, (glyph, title, body)) in row.iter().enumerate() {
+                        ui.spacing_mut().item_spacing.x = 22.0;
+                        for (offset, (glyph, title, body, cta)) in row.iter().enumerate() {
                             let index = row_index * columns + offset;
-                            if intent_card(ui, width, *glyph, title, body, &palette).clicked() {
+                            if intent_card(ui, width, *glyph, title, body, cta, &palette).clicked()
+                            {
                                 chosen = Some(index);
                             }
                         }
                     });
                 }
-                ui.add_space(CARD_GAP);
                 match chosen {
                     Some(0) => self.go_install_apps(),
                     Some(1) => self.go_fresh_setup(),
@@ -1170,8 +1178,8 @@ impl ToolboxApp {
                     _ => {}
                 }
 
-                ui.add_space(8.0);
-                section_eyebrow(ui, "System glance", &palette);
+                ui.add_space(36.0);
+                section_eyebrow(ui, "Your computer", &palette);
                 ui.add_space(10.0);
                 let metrics = self.glance_metrics();
                 let glance_cols = glance_columns(ui);
@@ -1195,8 +1203,8 @@ impl ToolboxApp {
                     self.go_system();
                 }
 
-                ui.add_space(8.0);
-                section_eyebrow(ui, "Recent runs", &palette);
+                ui.add_space(22.0);
+                section_eyebrow(ui, "Recent activity", &palette);
                 ui.add_space(10.0);
                 self.recent_runs_card(ui, &palette);
             });
@@ -1204,16 +1212,16 @@ impl ToolboxApp {
 
     fn recent_runs_card(&self, ui: &mut Ui, palette: &Palette) {
         Frame::new()
-            .fill(palette.surface)
             .stroke(Stroke::new(1.0_f32, palette.border))
-            .corner_radius(CARD_RADIUS)
             .inner_margin(egui::Margin::symmetric(18, 16))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 if self.recent_runs.is_empty() {
                     ui.label(
-                        RichText::new("No runs yet — stage apps or a recipe to get started.")
-                            .color(palette.muted),
+                        RichText::new(
+                            "Nothing yet. Pick some apps or a recipe and they will show up here.",
+                        )
+                        .color(palette.muted),
                     );
                     return;
                 }
@@ -1238,36 +1246,39 @@ impl ToolboxApp {
                 .color(palette.text)
                 .strong(),
         );
-        ui.add_space(6.0);
-        ui.label(RichText::new("One-click admin playbooks for this machine.").color(palette.muted));
-        ui.add_space(16.0);
+        ui.label(
+            RichText::new(
+                "Ready-made fixes and setups. Switch on the ones you want, then run them together.",
+            )
+            .color(palette.muted),
+        );
+        ui.add_space(22.0);
 
-        let groups = self.recipe_groups();
+        let mut order: Vec<usize> = (0..self.admin_tasks.len()).collect();
+        order.sort_by_key(|index| (recipe_list_rank(&self.admin_tasks[*index].label), *index));
         ScrollArea::vertical()
             .id_salt("recipes_cards")
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                for (group_index, (category, indices)) in groups.iter().enumerate() {
-                    if group_index > 0 {
-                        ui.add_space(8.0);
-                    }
-                    section_eyebrow(ui, category, &palette);
-                    ui.add_space(10.0);
-                    let columns = card_columns(ui);
-                    self.card_rows(ui, columns, indices.len(), |app, ui, index, width| {
-                        app.recipe_tile(ui, indices[index], width);
+                Frame::new()
+                    .stroke(Stroke::new(1.0_f32, palette.border))
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.spacing_mut().item_spacing.y = 0.0;
+                        for (row, index) in order.iter().enumerate() {
+                            self.recipe_row(ui, *index, row > 0);
+                        }
                     });
-                }
             });
     }
 
-    fn recipe_tile(&mut self, ui: &mut Ui, index: usize, width: f32) {
+    fn recipe_row(&mut self, ui: &mut Ui, index: usize, divider: bool) {
         let task = &self.admin_tasks[index];
         let label = task.label.clone();
         let selected = self.admin_selected.contains(&index);
         let palette = self.palette();
         let locked = self.selection_locked();
-        if recipe_card(ui, width, selected, &label, &palette).clicked() && !locked {
+        if recipe_row(ui, selected, divider, locked, &label, &palette) && !locked {
             if selected {
                 self.admin_selected.remove(&index);
             } else {
@@ -1279,26 +1290,25 @@ impl ToolboxApp {
     fn cursor_page(&mut self, ui: &mut Ui) {
         let palette = self.palette();
         ui.label(
-            RichText::new("Cursor")
+            RichText::new("Mouse cursor")
                 .font(FontId::proportional(TITLE_SIZE))
                 .color(palette.text)
                 .strong(),
         );
-        ui.add_space(6.0);
         ui.label(
             RichText::new(
-                "Bibata themes and the KDE Plasma cursor for GNOME and Omarchy. Apply one now, or stage it with installs and removes.",
+                "Choose a look. Use it right away, or add it to your queue with other changes.",
             )
             .color(palette.muted),
         );
-        ui.add_space(16.0);
+        ui.add_space(22.0);
 
         let themes = CursorTheme::ALL;
         ScrollArea::vertical()
             .id_salt("cursor_cards")
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                let columns = card_columns(ui);
+                let columns = cursor_columns(ui);
                 self.card_rows(ui, columns, themes.len(), |app, ui, index, width| {
                     app.cursor_tile(ui, themes[index], width);
                 });
@@ -1330,240 +1340,340 @@ impl ToolboxApp {
 
     fn system_info_page(&mut self, ui: &mut Ui) {
         let palette = self.palette();
-        let metrics = self.glance_metrics();
-        let rows = self.system_detail_rows();
-        let mut next_family = None;
+        let hw = self.hardware.clone();
+        let percent = |used: u64, total: u64| -> f32 {
+            if total == 0 {
+                0.0
+            } else {
+                (used as f32 / total as f32).clamp(0.0, 1.0)
+            }
+        };
+        let cards: [SystemCard; 4] = [
+            SystemCard {
+                title: "System",
+                lines: vec![
+                    self.distro_name.clone(),
+                    format!("Kernel {}", self.kernel),
+                    format!("Desktop: {}", self.de_wm),
+                    format!("Installs with {}", self.package_manager),
+                ],
+                bar: None,
+            },
+            SystemCard {
+                title: "Processor",
+                lines: vec![
+                    hw.cpu_model.clone(),
+                    format!("{} cores", hw.cpu_cores),
+                    format!("Busy about {:.0}%", hw.cpu_load * 100.0),
+                ],
+                bar: Some(hw.cpu_load),
+            },
+            SystemCard {
+                title: "Memory",
+                lines: vec![
+                    format!(
+                        "{} of {} in use",
+                        system::format_kb(hw.mem_used_kb),
+                        system::format_kb(hw.mem_total_kb)
+                    ),
+                    format!(
+                        "Swap: {} of {}",
+                        system::format_kb(hw.swap_used_kb),
+                        system::format_kb(hw.swap_total_kb)
+                    ),
+                ],
+                bar: Some(percent(hw.mem_used_kb, hw.mem_total_kb)),
+            },
+            SystemCard {
+                title: "Storage",
+                lines: vec![
+                    format!(
+                        "{} of {} used",
+                        system::format_kb(hw.disk_used_kb),
+                        system::format_kb(hw.disk_total_kb)
+                    ),
+                    format!("Filesystem: {}", hw.disk_fs),
+                    format!("Running for {}", uptime_prose()),
+                ],
+                bar: Some(percent(hw.disk_used_kb, hw.disk_total_kb)),
+            },
+        ];
         ScrollArea::vertical()
             .id_salt("system_page")
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.label(
-                    RichText::new(&self.distro_name)
+                    RichText::new("This computer")
                         .font(FontId::proportional(TITLE_SIZE))
                         .color(palette.text)
                         .strong(),
                 );
-                ui.add_space(6.0);
-                ui.label(
-                    RichText::new(format!(
-                        "{} · {} · up {}",
-                        self.kernel,
-                        self.package_manager,
-                        uptime_compact()
-                    ))
-                    .color(palette.muted),
-                );
-                ui.add_space(20.0);
-
-                section_eyebrow(ui, "Glance", &palette);
-                ui.add_space(10.0);
-                let glance_cols = glance_columns(ui);
-                let glance_width = tile_width(ui, glance_cols);
-                for start in (0..metrics.len()).step_by(glance_cols) {
-                    let end = (start + glance_cols).min(metrics.len());
+                ui.add_space(22.0);
+                let columns = if ui.available_width() < 640.0 { 1 } else { 2 };
+                let width = tile_width(ui, columns);
+                for row in cards.chunks(columns) {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = CARD_GAP;
-                        for item in &metrics[start..end] {
-                            metric_tile(ui, glance_width, item.0, &item.1, false, &palette);
+                        for card in row {
+                            system_card(ui, width, card, &palette);
                         }
                     });
                     ui.add_space(CARD_GAP);
                 }
-
-                ui.add_space(8.0);
-                section_eyebrow(ui, "Details", &palette);
-                ui.add_space(10.0);
-                system_details_card(ui, &rows, &palette);
-
-                ui.add_space(16.0);
-                section_eyebrow(ui, "Appearance", &palette);
-                ui.add_space(10.0);
-                if let Some(family) = appearance_card(ui, self.family, self.theme, &palette) {
-                    next_family = Some(family);
-                }
             });
-        if let Some(family) = next_family {
-            let ctx = ui.ctx().clone();
-            self.set_family(&ctx, family);
-        }
     }
 
-    fn modal_count_line(&self) -> String {
-        let mut parts = Vec::new();
-        let install = self.install_selected.len();
-        let remove = self.remove_selected.len();
-        let recipes = self.admin_selected.len();
-        match install {
-            0 => {}
-            1 => parts.push("install 1 app".to_owned()),
-            n => parts.push(format!("install {n} apps")),
+    fn queue_items(&self) -> Vec<(&'static str, String, QueueKey)> {
+        let mut items = Vec::new();
+        let mut install: Vec<usize> = self.install_selected.iter().copied().collect();
+        install.sort_by_key(|index| self.apps.get(*index).map(|app| app.label.clone()));
+        for index in install {
+            if let Some(app) = self.apps.get(index) {
+                items.push(("Install", app.label.clone(), QueueKey::Install(index)));
+            }
         }
-        match remove {
-            0 => {}
-            1 => parts.push("remove 1 app".to_owned()),
-            n => parts.push(format!("remove {n} apps")),
-        }
-        if self.cursor_selected.is_some() {
-            parts.push("set 1 cursor".to_owned());
-        }
-        match recipes {
-            0 => {}
-            1 => parts.push("run 1 recipe".to_owned()),
-            n => parts.push(format!("run {n} recipes")),
-        }
-        staged_sentence(&parts)
-    }
-
-    fn review_groups(&self) -> Vec<(&'static str, Vec<String>)> {
-        let mut groups = Vec::new();
-        let install = self.install_selected_names();
-        if !install.is_empty() {
-            groups.push(("Install", install));
-        }
-        let remove = self.remove_selected_names();
-        if !remove.is_empty() {
-            groups.push(("Remove", remove));
+        let mut remove: Vec<usize> = self.remove_selected.iter().copied().collect();
+        remove.sort_by_key(|index| self.remove_apps.get(*index).map(|app| app.label.clone()));
+        for index in remove {
+            if let Some(app) = self.remove_apps.get(index) {
+                items.push(("Remove", app.label.clone(), QueueKey::Remove(index)));
+            }
         }
         if let Some(theme) = self.cursor_selected {
-            groups.push(("Cursor", vec![theme.label().to_owned()]));
+            items.push(("Apply", theme.label().to_owned(), QueueKey::Cursor));
         }
-        let recipes = self.admin_selected_names();
-        if !recipes.is_empty() {
-            groups.push(("Recipes", recipes));
+        let mut admin: Vec<usize> = self.admin_selected.iter().copied().collect();
+        admin.sort_unstable();
+        for index in admin {
+            if let Some(task) = self.admin_tasks.get(index) {
+                items.push((
+                    "Run",
+                    recipe_title(&task.label).to_owned(),
+                    QueueKey::Admin(index),
+                ));
+            }
         }
-        groups
+        items
     }
 
+    fn unstage(&mut self, key: QueueKey) {
+        match key {
+            QueueKey::Install(index) => {
+                self.install_selected.remove(&index);
+            }
+            QueueKey::Remove(index) => {
+                self.remove_selected.remove(&index);
+            }
+            QueueKey::Cursor => self.cursor_selected = None,
+            QueueKey::Admin(index) => {
+                self.admin_selected.remove(&index);
+            }
+        }
+    }
+
+    /// Floating pill at the bottom centre that summarises the queue.
     fn run_dock(&mut self, ctx: &Context) {
-        if !self.dock_visible() {
+        if !self.dock_visible() || self.show_password_modal {
             return;
         }
 
         let palette = self.palette();
         let count = self.dock_count();
         let names = truncated_names(&self.dock_names(), 56);
-
-        let mut clear = false;
         let mut review = false;
-        let y_offset = if self.run_drawer_open { -28.0 } else { -24.0 };
 
         Area::new(Id::new("run_dock"))
-            .anchor(Align2::CENTER_BOTTOM, [0.0, y_offset])
+            .anchor(Align2::CENTER_BOTTOM, [0.0, -24.0])
             .order(Order::Foreground)
             .show(ctx, |ui| {
                 Frame::new()
-                    .fill(palette.surface)
-                    .stroke(Stroke::new(1.0_f32, palette.border_strong))
+                    .fill(palette.void)
+                    .stroke(Stroke::new(1.0_f32, palette.accent))
                     .corner_radius(DOCK_RADIUS)
-                    .inner_margin(egui::Margin::symmetric(20, 14))
+                    .inner_margin(egui::Margin::symmetric(22, 14))
                     .shadow(egui::Shadow {
-                        offset: [0, 8],
-                        blur: 24,
+                        offset: [0, 12],
+                        blur: 40,
                         spread: 0,
-                        color: Color32::from_black_alpha(80),
+                        color: Color32::from_black_alpha(0x77),
                     })
                     .show(ui, |ui| {
                         ui.set_min_width(DOCK_MIN_WIDTH);
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 16.0;
                             ui.vertical(|ui| {
-                                ui.label(
-                                    RichText::new(format!("{count} staged"))
-                                        .color(palette.accent)
+                                ui.spacing_mut().item_spacing.y = 2.0;
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 5.0;
+                                    ui.label(
+                                        RichText::new(count.to_string())
+                                            .font(FontId::proportional(18.0))
+                                            .color(palette.accent)
+                                            .strong(),
+                                    );
+                                    ui.label(
+                                        RichText::new(if count == 1 {
+                                            "task queued"
+                                        } else {
+                                            "tasks queued"
+                                        })
+                                        .font(FontId::proportional(18.0))
+                                        .color(palette.text)
                                         .strong(),
-                                );
+                                    );
+                                });
                                 ui.label(RichText::new(names).color(palette.muted));
                             });
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if cta_button(ui, "Review & Run →", true, &palette).clicked() {
+                                if cta_button(ui, "Review & run →", true, &palette).clicked() {
                                     review = true;
-                                }
-                                ui.add_space(10.0);
-                                if ghost_button(ui, "Clear", &palette).clicked() {
-                                    clear = true;
                                 }
                             });
                         });
                     });
             });
 
-        if clear {
-            self.clear_dock_selections();
-        }
         if review {
             self.show_password_modal = true;
         }
     }
 
-    fn run_drawer(&mut self, ui: &mut Ui) {
-        let palette = self.palette();
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Run").color(palette.text).strong());
-            if self.is_running {
-                ui.add_space(8.0);
-                ui.spinner();
-            }
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ghost_button(ui, "Dismiss", &palette).clicked() {
-                    self.run_drawer_open = false;
-                }
-                ui.add_space(6.0);
-                if ghost_button(ui, "Clear Log", &palette).clicked() {
-                    self.log = "Process logs will appear here...".to_owned();
-                    self.log_revision = self.log_revision.saturating_add(1);
-                }
-            });
-        });
-        ui.add_space(8.0);
-
-        if !self.run_items.is_empty() {
-            ScrollArea::vertical()
-                .id_salt("run_task_status")
-                .max_height(72.0)
-                .show(ui, |ui| {
-                    for item in &self.run_items {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                RichText::new(task_status_label(item.status))
-                                    .color(task_status_color(item.status, &palette))
-                                    .strong(),
-                            );
-                            ui.label(RichText::new(&item.description).color(palette.text));
-                        });
-                    }
-                });
-            ui.add_space(8.0);
+    /// Right-hand progress drawer over a dimmed scrim.
+    fn run_drawer_overlay(&mut self, ctx: &Context) {
+        if !self.run_drawer_open {
+            return;
         }
+        let palette = self.palette();
+        let screen = ctx.content_rect();
+        let done_count = self
+            .run_items
+            .iter()
+            .filter(|item| matches!(item.status, TaskStatus::Success | TaskStatus::Failed))
+            .count();
+        let total = self.run_items.len().max(1);
+        let failed = self
+            .run_items
+            .iter()
+            .any(|item| item.status == TaskStatus::Failed);
+        let finished = !self.is_running;
+        let mut close = false;
 
-        let log_height = (ui.available_height() - 8.0).max(80.0);
-        let showing_placeholder = self.log == "Process logs will appear here...";
-        Frame::new()
-            .fill(palette.log_inner)
-            .stroke(Stroke::new(1.0_f32, palette.border))
-            .inner_margin(8.0)
-            .corner_radius(10.0)
-            .show(ui, |ui| {
-                ScrollArea::vertical()
-                    .id_salt("run_drawer_log")
-                    .stick_to_bottom(true)
-                    .max_height(log_height)
+        Area::new(Id::new("run_scrim"))
+            .fixed_pos(screen.min)
+            .order(Order::Foreground)
+            .show(ctx, |ui| {
+                let (rect, _) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
+                ui.painter()
+                    .rect_filled(rect, 0.0, Color32::from_black_alpha(0x99));
+            });
+
+        Area::new(Id::new("run_drawer"))
+            .fixed_pos(pos2(screen.right() - RUN_DRAWER_WIDTH, screen.top()))
+            .order(Order::Foreground)
+            .show(ctx, |ui| {
+                Frame::new()
+                    .fill(palette.void)
+                    .stroke(Stroke::new(1.0_f32, palette.border_strong))
+                    .inner_margin(egui::Margin::same(28))
                     .show(ui, |ui| {
-                        ui.set_min_width(ui.available_width());
-                        ui.set_min_height(log_height - 18.0);
+                        ui.set_width(RUN_DRAWER_WIDTH - 56.0);
+                        ui.set_min_height(screen.height() - 56.0);
                         ui.label(
-                            RichText::new(&self.log)
-                                .font(FontId::monospace(12.5))
-                                .color(if showing_placeholder {
-                                    palette.muted
-                                } else {
-                                    palette.log_text
-                                }),
+                            RichText::new(if !finished {
+                                "Working on it…"
+                            } else if failed {
+                                "Finished with problems"
+                            } else {
+                                "All done"
+                            })
+                            .font(FontId::proportional(30.0))
+                            .color(palette.text)
+                            .strong(),
                         );
-                        if !showing_placeholder {
-                            ui.scroll_to_cursor(Some(Align::BOTTOM));
+                        ui.label(
+                            RichText::new(if !finished {
+                                "Please keep this window open."
+                            } else if failed {
+                                "Some tasks failed. Check the details below."
+                            } else {
+                                "Everything finished without problems."
+                            })
+                            .color(palette.muted),
+                        );
+                        ui.add_space(18.0);
+
+                        let (bar, _) =
+                            ui.allocate_exact_size(vec2(ui.available_width(), 6.0), Sense::hover());
+                        ui.painter().rect_filled(bar, 0.0, palette.border);
+                        let fraction = if finished {
+                            1.0
+                        } else {
+                            done_count as f32 / total as f32
+                        };
+                        ui.painter().rect_filled(
+                            Rect::from_min_size(bar.min, vec2(bar.width() * fraction, 6.0)),
+                            0.0,
+                            palette.accent,
+                        );
+                        ui.add_space(18.0);
+
+                        ScrollArea::vertical()
+                            .id_salt("run_task_status")
+                            .max_height(220.0)
+                            .show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                for (index, item) in self.run_items.iter().enumerate() {
+                                    run_job_row(ui, index > 0, item, &palette);
+                                }
+                            });
+                        ui.add_space(14.0);
+
+                        section_eyebrow(ui, "Details", &palette);
+                        ui.add_space(6.0);
+                        let log_height = (ui.available_height() - 76.0).max(80.0);
+                        let showing_placeholder = self.log == "Process logs will appear here...";
+                        Frame::new()
+                            .stroke(Stroke::new(1.0_f32, palette.border))
+                            .inner_margin(8.0)
+                            .show(ui, |ui| {
+                                ScrollArea::vertical()
+                                    .id_salt("run_drawer_log")
+                                    .stick_to_bottom(true)
+                                    .max_height(log_height)
+                                    .show(ui, |ui| {
+                                        ui.set_min_width(ui.available_width());
+                                        ui.set_min_height(log_height - 18.0);
+                                        ui.label(
+                                            RichText::new(&self.log)
+                                                .font(FontId::monospace(12.0))
+                                                .color(if showing_placeholder {
+                                                    palette.muted
+                                                } else {
+                                                    palette.log_text
+                                                }),
+                                        );
+                                    });
+                            });
+                        ui.add_space(14.0);
+                        let label = if finished { "Close" } else { "Running…" };
+                        let button = ui.add_enabled(
+                            finished,
+                            Button::new(RichText::new(label).color(palette.cta_text).strong())
+                                .fill(palette.cta_fill)
+                                .stroke(Stroke::new(1.0_f32, palette.cta_fill))
+                                .corner_radius(0.0)
+                                .min_size(vec2(ui.available_width(), 44.0)),
+                        );
+                        if button.clicked() {
+                            close = true;
                         }
                     });
             });
+
+        if close {
+            self.run_drawer_open = false;
+            self.acknowledge_run_complete();
+        }
     }
 
     fn staged_needs_sudo(&self) -> bool {
@@ -1573,201 +1683,201 @@ impl ToolboxApp {
         }
     }
 
+    /// Expanded queue panel: review, optional password, then run.
     fn sudo_modal(&mut self, ctx: &Context) {
         if !self.show_password_modal {
             return;
         }
         let palette = self.palette();
 
+        if self.total_staged_count() == 0 {
+            self.show_password_modal = false;
+            return;
+        }
         if ctx.input(|input| input.key_pressed(Key::Escape)) {
             zeroize_string(&mut self.password);
             self.show_password_modal = false;
             return;
         }
 
-        let mut open = true;
-        let count_line = self.modal_count_line();
-        let groups = self.review_groups();
+        let items = self.queue_items();
         let toolbox = self.remove_includes_toolbox();
+        let needs_sudo = self.staged_needs_sudo();
+        let count = items.len();
+        let mut close = false;
+        let mut clear = false;
+        let mut run = false;
+        let mut removed = None;
 
-        egui::Window::new("Review & Run")
-            .collapsible(false)
-            .resizable(false)
-            .title_bar(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .open(&mut open)
-            .frame(
-                Frame::new()
-                    .fill(palette.modal_fill)
-                    .stroke(Stroke::new(1.0_f32, palette.border_strong))
-                    .inner_margin(18.0)
-                    .corner_radius(12.0),
-            )
+        Area::new(Id::new("queue_panel"))
+            .anchor(Align2::CENTER_BOTTOM, [0.0, -24.0])
+            .order(Order::Foreground)
             .show(ctx, |ui| {
-                ui.set_min_width(320.0);
-                ui.label(
-                    RichText::new("Review & Run")
-                        .font(FontId::proportional(18.0))
-                        .color(palette.modal_text)
-                        .strong(),
-                );
-                ui.add_space(6.0);
-                ui.label(RichText::new(count_line).color(palette.modal_text));
-                if let Some(toolbox) = &toolbox {
-                    ui.add_space(6.0);
-                    ui.label(
-                        RichText::new(format!(
-                            "This selection includes the running Toolbox: {toolbox}."
-                        ))
-                        .color(palette.danger)
-                        .strong(),
-                    );
-                }
-                if !groups.is_empty() {
-                    ui.add_space(10.0);
-                    ScrollArea::vertical()
-                        .id_salt("sudo_name_list")
-                        .max_height(240.0)
-                        .show(ui, |ui| {
-                            let mut first_group = true;
-                            for (header, names) in &groups {
-                                if !first_group {
-                                    ui.add_space(6.0);
+                Frame::new()
+                    .fill(palette.void)
+                    .stroke(Stroke::new(1.0_f32, palette.accent))
+                    .inner_margin(egui::Margin::symmetric(22, 18))
+                    .shadow(egui::Shadow {
+                        offset: [0, 12],
+                        blur: 40,
+                        spread: 0,
+                        color: Color32::from_black_alpha(0x77),
+                    })
+                    .show(ui, |ui| {
+                        ui.set_width(DOCK_MIN_WIDTH.max(520.0));
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(format!(
+                                    "Ready to run: {count} {}",
+                                    if count == 1 { "task" } else { "tasks" }
+                                ))
+                                .font(FontId::proportional(20.0))
+                                .color(palette.text)
+                                .strong(),
+                            );
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ghost_button(ui, "✕", &palette).clicked() {
+                                    close = true;
                                 }
-                                first_group = false;
-                                ui.label(RichText::new(*header).color(palette.modal_text).strong());
-                                for name in names {
-                                    ui.label(
-                                        RichText::new(format!("• {name}"))
-                                            .color(palette.modal_text),
-                                    );
-                                }
-                            }
+                            });
                         });
-                }
-                ui.add_space(12.0);
-                let needs_sudo = self.staged_needs_sudo();
-                if needs_sudo {
-                    ui.label(RichText::new("Sudo password").color(palette.muted).strong());
-                    ui.add_space(4.0);
-                    let response = ui.add(
-                        TextEdit::singleline(&mut self.password)
-                            .password(true)
-                            .hint_text(RichText::new("Required to run").color(palette.muted))
-                            .desired_width(280.0)
-                            .text_color(palette.text)
-                            .background_color(palette.input_fill),
-                    );
-                    if response.lost_focus()
-                        && ui.input(|input| input.key_pressed(Key::Enter))
-                        && !self.password.is_empty()
-                    {
-                        self.show_password_modal = false;
-                        self.run_selected(ctx);
-                    }
-                } else {
-                    ui.label(
-                        RichText::new("These tasks run without sudo.")
-                            .color(palette.muted)
-                            .strong(),
-                    );
-                    if ui.input(|input| input.key_pressed(Key::Enter)) {
-                        self.show_password_modal = false;
-                        self.run_selected(ctx);
-                    }
-                }
-                ui.add_space(10.0);
-                ui.horizontal(|ui| {
-                    let cancel = ui.add_sized(
-                        [88.0, 32.0],
-                        Button::new(RichText::new("Cancel").color(palette.cancel_text).strong())
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(Stroke::new(1.0_f32, palette.cancel_text)),
-                    );
-                    if cancel.clicked() {
-                        zeroize_string(&mut self.password);
-                        self.show_password_modal = false;
-                    }
-                    if ui
-                        .add_enabled(
-                            !needs_sudo || !self.password.is_empty(),
-                            Button::new(RichText::new("Confirm").color(palette.cta_text).strong())
-                                .fill(palette.cta_fill)
-                                .stroke(Stroke::new(1.0_f32, palette.cta_fill)),
-                        )
-                        .clicked()
-                    {
-                        self.show_password_modal = false;
-                        self.run_selected(ctx);
-                    }
-                });
+                        if let Some(toolbox) = &toolbox {
+                            ui.add_space(6.0);
+                            ui.label(
+                                RichText::new(format!(
+                                    "This selection includes the running Toolbox: {toolbox}."
+                                ))
+                                .color(palette.danger)
+                                .strong(),
+                            );
+                        }
+                        ui.add_space(10.0);
+                        Frame::new()
+                            .stroke(Stroke::new(1.0_f32, palette.border))
+                            .show(ui, |ui| {
+                                ScrollArea::vertical()
+                                    .id_salt("sudo_name_list")
+                                    .max_height(200.0)
+                                    .show(ui, |ui| {
+                                        ui.set_width(ui.available_width());
+                                        ui.spacing_mut().item_spacing.y = 0.0;
+                                        for (verb, name, key) in &items {
+                                            if queue_item_row(ui, verb, name, &palette) {
+                                                removed = Some(*key);
+                                            }
+                                        }
+                                    });
+                            });
+                        ui.add_space(12.0);
+                        if needs_sudo {
+                            ui.label(
+                                RichText::new("Your password (needed to change the system)")
+                                    .color(palette.muted),
+                            );
+                            ui.add_space(4.0);
+                            let response = ui.add(
+                                TextEdit::singleline(&mut self.password)
+                                    .password(true)
+                                    .desired_width(ui.available_width())
+                                    .text_color(palette.text)
+                                    .background_color(palette.input_fill),
+                            );
+                            if response.lost_focus()
+                                && ui.input(|input| input.key_pressed(Key::Enter))
+                                && !self.password.is_empty()
+                            {
+                                run = true;
+                            }
+                        } else {
+                            ui.label(
+                                RichText::new("These tasks run without a password.")
+                                    .color(palette.muted),
+                            );
+                            if ui.input(|input| input.key_pressed(Key::Enter)) {
+                                run = true;
+                            }
+                        }
+                        ui.add_space(12.0);
+                        ui.horizontal(|ui| {
+                            if ghost_button(ui, "Clear all", &palette).clicked() {
+                                clear = true;
+                            }
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                let ready = !needs_sudo || !self.password.is_empty();
+                                if ui
+                                    .add_enabled(
+                                        ready,
+                                        Button::new(
+                                            RichText::new(format!("Run {count} tasks →"))
+                                                .color(palette.cta_text)
+                                                .strong(),
+                                        )
+                                        .fill(palette.cta_fill)
+                                        .stroke(Stroke::new(1.0_f32, palette.cta_fill))
+                                        .corner_radius(0.0)
+                                        .min_size(vec2(160.0, 40.0)),
+                                    )
+                                    .clicked()
+                                {
+                                    run = true;
+                                }
+                            });
+                        });
+                    });
             });
-        if !open {
+
+        if let Some(key) = removed {
+            self.unstage(key);
+        }
+        if clear {
+            zeroize_string(&mut self.password);
+            self.clear_dock_selections();
+            self.show_password_modal = false;
+        } else if close {
             zeroize_string(&mut self.password);
             self.show_password_modal = false;
-        }
-    }
-
-    fn run_complete_modal(&mut self, ctx: &Context) {
-        if !self.show_run_complete_modal {
-            return;
-        }
-        let palette = self.palette();
-
-        if ctx.input(|input| input.key_pressed(Key::Escape) || input.key_pressed(Key::Enter)) {
-            self.acknowledge_run_complete();
-            return;
-        }
-
-        let mut open = true;
-        egui::Window::new("Run complete")
-            .collapsible(false)
-            .resizable(false)
-            .title_bar(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .open(&mut open)
-            .frame(
-                Frame::new()
-                    .fill(palette.modal_fill)
-                    .stroke(Stroke::new(1.0_f32, palette.border_strong))
-                    .inner_margin(18.0)
-                    .corner_radius(12.0),
-            )
-            .show(ctx, |ui| {
-                ui.set_min_width(280.0);
-                ui.label(
-                    RichText::new("Run complete")
-                        .font(FontId::proportional(18.0))
-                        .color(palette.modal_text)
-                        .strong(),
-                );
-                ui.add_space(6.0);
-                ui.label(
-                    RichText::new("All staged tasks finished. Review the Run drawer for details.")
-                        .color(palette.modal_text),
-                );
-                ui.add_space(14.0);
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui
-                        .add(
-                            Button::new(RichText::new("OK").color(palette.cta_text).strong())
-                                .fill(palette.cta_fill)
-                                .stroke(Stroke::new(1.0_f32, palette.cta_fill)),
-                        )
-                        .clicked()
-                    {
-                        self.acknowledge_run_complete();
-                    }
-                });
-            });
-        if !open {
-            self.acknowledge_run_complete();
+        } else if run {
+            self.show_password_modal = false;
+            self.run_selected(ctx);
         }
     }
 
     fn acknowledge_run_complete(&mut self) {
         self.show_run_complete_modal = false;
     }
+
+    fn toast_overlay(&mut self, ctx: &Context) {
+        let Some((message, started)) = &self.toast else {
+            return;
+        };
+        let elapsed = started.elapsed();
+        if elapsed >= std::time::Duration::from_millis(2200) {
+            self.toast = None;
+            return;
+        }
+        let palette = self.palette();
+        let message = message.clone();
+        Area::new(Id::new("toast"))
+            .anchor(Align2::RIGHT_TOP, [-24.0, TOPBAR_HEIGHT + 16.0])
+            .order(Order::Tooltip)
+            .show(ctx, |ui| {
+                Frame::new()
+                    .fill(palette.accent)
+                    .inner_margin(egui::Margin::symmetric(16, 10))
+                    .show(ui, |ui| {
+                        ui.label(RichText::new(message).color(palette.accent_on).strong());
+                    });
+            });
+        ctx.request_repaint_after(std::time::Duration::from_millis(200));
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum QueueKey {
+    Install(usize),
+    Remove(usize),
+    Cursor,
+    Admin(usize),
 }
 
 impl eframe::App for ToolboxApp {
@@ -1776,31 +1886,23 @@ impl eframe::App for ToolboxApp {
         self.drain_remove_scan();
 
         let palette = self.palette();
-        Panel::left("rail")
+        Panel::top("topbar")
             .resizable(false)
-            .exact_size(RAIL_WIDTH)
-            .frame(Frame::new().fill(palette.void).inner_margin(6.0))
-            .show_inside(ui, |ui| self.rail(ui));
-
-        if self.run_drawer_open {
-            let height = (ui.ctx().content_rect().height() * 0.40).clamp(220.0, 480.0);
-            Panel::bottom("run_drawer")
-                .exact_size(height)
-                .frame(
-                    Frame::new()
-                        .fill(palette.surface)
-                        .stroke(Stroke::new(1.0_f32, palette.border_strong))
-                        .inner_margin(egui::Margin::symmetric(16, 12)),
-                )
-                .show_inside(ui, |ui| self.run_drawer(ui));
-        }
+            .exact_size(TOPBAR_HEIGHT)
+            .frame(
+                Frame::new()
+                    .fill(palette.void)
+                    .stroke(Stroke::new(1.0_f32, palette.border))
+                    .inner_margin(egui::Margin::symmetric(28, 0)),
+            )
+            .show_inside(ui, |ui| self.topbar(ui));
 
         CentralPanel::default()
             .frame(Frame::new().fill(palette.void).inner_margin(egui::Margin {
-                left: 40,
-                right: 40,
-                top: 28,
-                bottom: if self.dock_can_appear() { 120 } else { 40 },
+                left: 44,
+                right: 44,
+                top: 36,
+                bottom: 120,
             }))
             .show_inside(ui, |ui| match self.page {
                 Page::Home => self.home_page(ui),
@@ -1813,7 +1915,8 @@ impl eframe::App for ToolboxApp {
         let ctx = ui.ctx().clone();
         self.run_dock(&ctx);
         self.sudo_modal(&ctx);
-        self.run_complete_modal(&ctx);
+        self.run_drawer_overlay(&ctx);
+        self.toast_overlay(&ctx);
     }
 }
 
@@ -1829,6 +1932,16 @@ fn install_fonts(ctx: &Context) {
         .or_default()
         .insert(0, "Inter".to_owned());
     ctx.set_fonts(fonts);
+}
+
+/// Decodes the app's own logo (not an app tile): `assets/brand/toolbox-logo.png`.
+fn decode_brand_logo() -> Option<crate::logos::Raster> {
+    let pixmap =
+        tiny_skia::Pixmap::decode_png(include_bytes!("../assets/brand/toolbox-logo.png")).ok()?;
+    Some(crate::logos::Raster {
+        size: [pixmap.width() as usize, pixmap.height() as usize],
+        rgba: pixmap.data().to_vec(),
+    })
 }
 
 fn load_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
@@ -1858,6 +1971,16 @@ fn load_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
             ),
         );
     }
+    if let Some(raster) = decode_brand_logo() {
+        icons.insert(
+            "toolbox-logo",
+            ctx.load_texture(
+                "toolbox-logo",
+                crate::logos::color_image_from_raster(&raster),
+                TextureOptions::LINEAR,
+            ),
+        );
+    }
     for theme in CursorTheme::ALL {
         let svg = theme.preview_markup();
         if let Some(raster) = crate::logos::rasterize_svg_markup(&svg, 256) {
@@ -1874,192 +1997,274 @@ fn load_icons(ctx: &Context) -> HashMap<&'static str, TextureHandle> {
     icons
 }
 
-fn rail_button(ui: &mut Ui, page: Page, selected: bool, palette: &Palette) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(44.0, 44.0), Sense::click());
-    let fill = if selected {
-        palette.elevated
-    } else if response.hovered() {
-        palette.nav_hover
-    } else {
-        Color32::TRANSPARENT
-    };
-    ui.painter().rect_filled(rect, 12.0, fill);
-    let icon_color = if selected {
-        palette.accent
+fn tab_button(
+    ui: &mut Ui,
+    page: Page,
+    selected: bool,
+    badge: usize,
+    compact: bool,
+    palette: &Palette,
+) -> egui::Response {
+    let show_label = !compact || selected;
+    let font = FontId::proportional(15.0);
+    let color = if selected {
+        palette.text
     } else {
         palette.muted
     };
+    let galley = ui
+        .painter()
+        .layout_no_wrap(page.title().to_owned(), font, color);
+    let badge_width = if badge > 0 { 26.0 } else { 0.0 };
+    let width = if show_label {
+        16.0 + 18.0 + 8.0 + galley.size().x + badge_width + 16.0
+    } else {
+        12.0 + 18.0 + badge_width + 12.0
+    };
+    let (rect, response) = ui.allocate_exact_size(vec2(width, TOPBAR_HEIGHT), Sense::click());
+    if response.hovered() && !selected {
+        ui.painter().rect_filled(rect, 0.0, palette.surface_hover);
+    }
+    let icon_rect = Rect::from_center_size(
+        pos2(
+            rect.left() + if show_label { 25.0 } else { 21.0 },
+            rect.center().y,
+        ),
+        vec2(18.0, 18.0),
+    );
     paint_page_symbol(
         ui.painter(),
-        Rect::from_center_size(rect.center(), vec2(22.0, 22.0)),
+        icon_rect,
         page,
-        icon_color,
+        if selected {
+            palette.accent
+        } else {
+            palette.muted
+        },
     );
-    if selected {
-        let pip = pos2(rect.right() - 6.0, rect.center().y);
-        ui.painter().circle_filled(pip, 3.0, palette.accent);
+    let text_pos = pos2(
+        icon_rect.right() + if show_label { 8.0 } else { 0.0 },
+        rect.center().y - galley.size().y / 2.0,
+    );
+    let text_right = text_pos.x + galley.size().x;
+    if show_label {
+        ui.painter().galley(text_pos, galley, color);
     }
-    response.on_hover_text(page.title())
-}
-
-fn theme_toggle_button(ui: &mut Ui, palette: &Palette) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(44.0, 44.0), Sense::click());
-    let response = response.on_hover_text(palette.mode.toggle_tooltip());
-    let punch = if response.hovered() {
-        ui.painter().rect_filled(rect, 12.0, palette.nav_hover);
-        palette.nav_hover
-    } else {
-        palette.void
-    };
-    let icon_rect = Rect::from_center_size(rect.center(), vec2(22.0, 22.0));
-    palette.paint_toggle_icon(ui.painter(), icon_rect, punch);
+    if badge > 0 {
+        let badge_rect = Rect::from_center_size(
+            pos2(text_right + 8.0 + 9.0, rect.center().y),
+            vec2(18.0, 18.0),
+        );
+        ui.painter().rect_filled(badge_rect, 0.0, palette.accent);
+        ui.painter().text(
+            badge_rect.center(),
+            Align2::CENTER_CENTER,
+            badge.to_string(),
+            FontId::proportional(11.0),
+            palette.accent_on,
+        );
+    }
+    if selected {
+        ui.painter().rect_filled(
+            Rect::from_min_max(pos2(rect.left(), rect.bottom() - 2.0), rect.right_bottom()),
+            0.0,
+            palette.accent,
+        );
+    }
     response
 }
 
-fn appearance_picker(
-    ui: &mut Ui,
-    current: ThemeFamily,
-    mode: ThemeMode,
-    chrome: &Palette,
-) -> Option<ThemeFamily> {
-    let mut picked = None;
-    ui.label(RichText::new("Appearance").color(chrome.text).strong());
-    ui.add_space(8.0);
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 8.0;
-        for family in ThemeFamily::ALL {
-            if family_swatch(ui, family, current, mode, chrome).clicked() {
-                picked = Some(family);
-            }
-        }
-    });
-    picked
+fn queue_button(ui: &mut Ui, count: usize, palette: &Palette) -> egui::Response {
+    ui.add(
+        Button::new(
+            RichText::new(format!("Queue: {count} →"))
+                .color(palette.accent)
+                .strong(),
+        )
+        .fill(Color32::TRANSPARENT)
+        .stroke(Stroke::new(1.0_f32, palette.accent))
+        .corner_radius(0.0)
+        .min_size(vec2(0.0, 34.0)),
+    )
 }
 
-fn appearance_card(
-    ui: &mut Ui,
-    current: ThemeFamily,
-    mode: ThemeMode,
-    chrome: &Palette,
-) -> Option<ThemeFamily> {
-    let mut picked = None;
-    Frame::new()
-        .fill(chrome.surface)
-        .stroke(Stroke::new(1.0_f32, chrome.border))
-        .corner_radius(CARD_RADIUS)
-        .inner_margin(egui::Margin::symmetric(16, 14))
-        .show(ui, |ui| {
-            ui.set_min_width(ui.available_width());
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
-                for family in ThemeFamily::ALL {
-                    if family_swatch(ui, family, current, mode, chrome).clicked() {
-                        picked = Some(family);
-                    }
-                }
-            });
-        });
-    picked
+fn run_job_row(ui: &mut Ui, divider: bool, item: &RunItem, palette: &Palette) {
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::hover());
+    if divider {
+        ui.painter().line_segment(
+            [rect.left_top(), rect.right_top()],
+            Stroke::new(1.0_f32, palette.border),
+        );
+    }
+    let badge = Rect::from_center_size(pos2(rect.left() + 10.0, rect.center().y), vec2(16.0, 16.0));
+    match item.status {
+        TaskStatus::Success => {
+            ui.painter().rect_filled(badge, 0.0, palette.accent);
+        }
+        TaskStatus::Failed => {
+            ui.painter().rect_filled(badge, 0.0, palette.danger);
+        }
+        TaskStatus::Running => {
+            ui.painter().rect_stroke(
+                badge,
+                0.0,
+                Stroke::new(1.5_f32, palette.accent),
+                StrokeKind::Inside,
+            );
+        }
+        TaskStatus::Queued => {
+            ui.painter().rect_stroke(
+                badge,
+                0.0,
+                Stroke::new(1.0_f32, palette.border_strong),
+                StrokeKind::Inside,
+            );
+        }
+    }
+    ui.painter().text(
+        pos2(rect.left() + 28.0, rect.center().y),
+        Align2::LEFT_CENTER,
+        &item.description,
+        FontId::proportional(14.5),
+        palette.text,
+    );
+    let label = match item.status {
+        TaskStatus::Queued => "Waiting",
+        TaskStatus::Running => "Working…",
+        TaskStatus::Success => "Done",
+        TaskStatus::Failed => "Failed",
+    };
+    ui.painter().text(
+        pos2(rect.right(), rect.center().y),
+        Align2::RIGHT_CENTER,
+        label,
+        FontId::proportional(13.0),
+        task_status_color(item.status, palette),
+    );
+}
+
+/// One queue line. Returns true when the remove button was clicked.
+fn queue_item_row(ui: &mut Ui, verb: &str, name: &str, palette: &Palette) -> bool {
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 38.0), Sense::hover());
+    if response.hovered() {
+        ui.painter().rect_filled(rect, 0.0, palette.surface_hover);
+    }
+    ui.painter().text(
+        pos2(rect.left() + 14.0, rect.center().y),
+        Align2::LEFT_CENTER,
+        verb,
+        FontId::proportional(13.0),
+        palette.accent,
+    );
+    ui.painter().text(
+        pos2(rect.left() + 84.0, rect.center().y),
+        Align2::LEFT_CENTER,
+        name,
+        FontId::proportional(14.5),
+        palette.text,
+    );
+    let x_rect =
+        Rect::from_center_size(pos2(rect.right() - 20.0, rect.center().y), vec2(28.0, 28.0));
+    let x = ui.interact(
+        x_rect,
+        ui.id().with(("unstage", verb, name)),
+        Sense::click(),
+    );
+    ui.painter().text(
+        x_rect.center(),
+        Align2::CENTER_CENTER,
+        "✕",
+        FontId::proportional(13.0),
+        if x.hovered() {
+            palette.text
+        } else {
+            palette.muted
+        },
+    );
+    x.clicked()
 }
 
 fn family_swatch(
     ui: &mut Ui,
     family: ThemeFamily,
-    current: ThemeFamily,
-    mode: ThemeMode,
+    selected: bool,
     chrome: &Palette,
 ) -> egui::Response {
-    let selected = family == current;
-    let skin = Palette::from(family, mode);
-    let label = family.label();
-    let width = if selected { 96.0 } else { 80.0 };
-    let (rect, response) = ui.allocate_exact_size(vec2(width, 32.0), Sense::click());
-    if selected {
-        ui.painter().rect_filled(rect, 16.0, skin.accent_dim);
-        ui.painter().rect_stroke(
-            rect,
-            16.0,
-            Stroke::new(1.0_f32, skin.accent),
-            StrokeKind::Inside,
-        );
-    } else if response.hovered() {
-        ui.painter().rect_filled(rect, 16.0, chrome.nav_hover);
-        ui.painter().rect_stroke(
-            rect,
-            16.0,
-            Stroke::new(1.0_f32, chrome.border),
-            StrokeKind::Inside,
-        );
-    } else {
-        ui.painter().rect_stroke(
-            rect,
-            16.0,
-            Stroke::new(1.0_f32, chrome.border),
-            StrokeKind::Inside,
-        );
-    }
-    let text_color = if selected { chrome.text } else { chrome.muted };
-    if selected {
-        ui.painter().text(
-            pos2(rect.left() + 14.0, rect.center().y),
-            Align2::LEFT_CENTER,
-            label,
-            FontId::proportional(13.0),
-            text_color,
-        );
-        ui.painter()
-            .circle_filled(pos2(rect.right() - 14.0, rect.center().y), 4.0, skin.accent);
-    } else {
-        ui.painter().text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            label,
-            FontId::proportional(13.0),
-            text_color,
-        );
-    }
+    let skin = Palette::from(family, ThemeMode::Dark);
+    let (rect, response) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
+    ui.painter().rect_filled(rect, 0.0, skin.accent);
+    paint_swatch_ring(ui, rect, selected, response.hovered(), chrome);
     response.on_hover_text(format!("{} appearance", family.label()))
+}
+
+/// The white Light skin, last in the swatch row.
+fn light_swatch(ui: &mut Ui, selected: bool, chrome: &Palette) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
+    ui.painter().rect_filled(rect, 0.0, Color32::WHITE);
+    ui.painter().rect_stroke(
+        rect,
+        0.0,
+        Stroke::new(1.0_f32, chrome.border_strong),
+        StrokeKind::Inside,
+    );
+    paint_swatch_ring(ui, rect, selected, response.hovered(), chrome);
+    response.on_hover_text("Light appearance")
+}
+
+fn paint_swatch_ring(ui: &Ui, rect: Rect, selected: bool, hovered: bool, chrome: &Palette) {
+    if selected || hovered {
+        ui.painter().rect_stroke(
+            rect.expand(3.0),
+            0.0,
+            Stroke::new(
+                if selected { 1.5_f32 } else { 1.0_f32 },
+                if selected { chrome.text } else { chrome.muted },
+            ),
+            StrokeKind::Outside,
+        );
+    }
 }
 
 fn mode_segment(ui: &mut Ui, mode: AppsMode, palette: &Palette) -> Option<AppsMode> {
     let mut clicked = None;
-    ui.allocate_ui_with_layout(
-        vec2(196.0, 36.0),
-        Layout::left_to_right(Align::Center),
-        |ui| {
-            Frame::new()
-                .fill(palette.surface)
-                .stroke(Stroke::new(1.0_f32, palette.border))
-                .corner_radius(18.0)
-                .inner_margin(egui::Margin::symmetric(4, 4))
-                .show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    if segment_button(ui, "Install", mode == AppsMode::Install, palette).clicked() {
-                        clicked = Some(AppsMode::Install);
-                    }
-                    if segment_button(ui, "Remove", mode == AppsMode::Remove, palette).clicked() {
-                        clicked = Some(AppsMode::Remove);
-                    }
-                });
-        },
-    );
+    // Right-to-left parent: add Uninstall first so Install reads on the left.
+    ui.spacing_mut().item_spacing.x = 0.0;
+    if segment_button(ui, "Uninstall", mode == AppsMode::Remove, palette).clicked() {
+        clicked = Some(AppsMode::Remove);
+    }
+    if segment_button(ui, "Install", mode == AppsMode::Install, palette).clicked() {
+        clicked = Some(AppsMode::Install);
+    }
     clicked
 }
 
 fn segment_button(ui: &mut Ui, label: &str, selected: bool, palette: &Palette) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(88.0, 28.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(104.0, 38.0), Sense::click());
     if selected {
-        ui.painter().rect_filled(rect, 14.0, palette.text);
+        ui.painter().rect_filled(rect, 0.0, palette.accent);
     } else if response.hovered() {
-        ui.painter().rect_filled(rect, 14.0, palette.nav_hover);
+        ui.painter().rect_filled(rect, 0.0, palette.surface_hover);
     }
+    ui.painter().rect_stroke(
+        rect,
+        0.0,
+        Stroke::new(
+            1.0_f32,
+            if selected {
+                palette.accent
+            } else {
+                palette.border
+            },
+        ),
+        StrokeKind::Inside,
+    );
     ui.painter().text(
         rect.center(),
         Align2::CENTER_CENTER,
         label,
-        FontId::proportional(13.0),
+        FontId::proportional(14.0),
         if selected {
-            palette.void
+            palette.accent_on
         } else {
             palette.muted
         },
@@ -2068,23 +2273,20 @@ fn segment_button(ui: &mut Ui, label: &str, selected: bool, palette: &Palette) -
 }
 
 fn filter_chip(ui: &mut Ui, label: &str, selected: bool, palette: &Palette) -> egui::Response {
-    let width = (label.len() as f32 * 7.4 + 24.0).clamp(48.0, 132.0);
-    let (rect, response) = ui.allocate_exact_size(vec2(width, 30.0), Sense::click());
+    let width = (label.len() as f32 * 7.6 + 30.0).clamp(48.0, 150.0);
+    let (rect, response) = ui.allocate_exact_size(vec2(width, 34.0), Sense::click());
     let fill = if selected {
-        match palette.mode {
-            ThemeMode::Dark => palette.filter_selected_fill,
-            ThemeMode::Light => palette.accent_bright,
-        }
+        palette.accent
     } else if response.hovered() {
         palette.surface_hover
     } else {
         Color32::TRANSPARENT
     };
-    ui.painter().rect_filled(rect, 15.0, fill);
+    ui.painter().rect_filled(rect, 0.0, fill);
     if !selected {
         ui.painter().rect_stroke(
             rect,
-            15.0,
+            0.0,
             Stroke::new(1.0_f32, palette.border),
             StrokeKind::Inside,
         );
@@ -2093,9 +2295,9 @@ fn filter_chip(ui: &mut Ui, label: &str, selected: bool, palette: &Palette) -> e
         rect.center(),
         Align2::CENTER_CENTER,
         label,
-        FontId::proportional(12.0),
+        FontId::proportional(13.5),
         if selected {
-            palette.filter_selected_text
+            palette.accent_on
         } else {
             palette.muted
         },
@@ -2108,7 +2310,7 @@ fn search_field(ui: &mut Ui, search: &mut String, hint: &str, palette: &Palette)
     Frame::new()
         .fill(palette.surface)
         .stroke(Stroke::new(1.0_f32, palette.input_border))
-        .corner_radius(14.0)
+        .corner_radius(0.0)
         .inner_margin(egui::Margin::symmetric(14, 0))
         .show(ui, |ui| {
             ui.set_width(width);
@@ -2173,20 +2375,20 @@ fn paint_card_background(painter: &Painter, rect: Rect, selected: bool, palette:
 }
 
 fn paint_check(painter: &Painter, rect: Rect, selected: bool, palette: &Palette) {
-    let center = rect.center();
-    let radius = rect.width() / 2.0;
     if selected {
-        painter.circle_filled(center, radius, palette.accent);
+        painter.rect_filled(rect, 0.0, palette.accent);
+        let center = rect.center();
         let a = pos2(rect.left() + 6.0, center.y);
         let b = pos2(rect.left() + 9.5, rect.bottom() - 6.5);
         let c = pos2(rect.right() - 6.0, rect.top() + 6.5);
         painter.line_segment([a, b], Stroke::new(2.0_f32, palette.accent_on));
         painter.line_segment([b, c], Stroke::new(2.0_f32, palette.accent_on));
     } else {
-        painter.circle_stroke(
-            center,
-            radius - 0.5,
+        painter.rect_stroke(
+            rect,
+            0.0,
             Stroke::new(1.2_f32, palette.border_strong),
+            StrokeKind::Inside,
         );
     }
 }
@@ -2198,7 +2400,12 @@ fn paint_app_icon(
     icon: Option<&(TextureHandle, bool)>,
     palette: &Palette,
 ) {
-    painter.circle_filled(rect.center(), rect.width() / 2.0, palette.icon_well);
+    painter.rect_stroke(
+        rect,
+        0.0,
+        Stroke::new(1.0_f32, palette.border),
+        StrokeKind::Inside,
+    );
     if let Some((icon, mono)) = icon {
         let tint = if *mono { palette.text } else { Color32::WHITE };
         painter.image(
@@ -2255,20 +2462,20 @@ fn app_card(ui: &mut Ui, card: AppCard<'_>) -> egui::Response {
     let text_width = (rect.width() - 32.0).max(24.0);
     let painter = ui.painter();
     painter.text(
-        pos2(text_left, rect.min.y + 72.0),
+        pos2(text_left, rect.min.y + 74.0),
         Align2::LEFT_CENTER,
         label,
-        FontId::proportional(14.0),
+        FontId::proportional(17.0),
         palette.text,
     );
 
     let galley = painter.layout(
         description.to_owned(),
-        FontId::proportional(12.0),
+        FontId::proportional(12.5),
         palette.muted,
         text_width,
     );
-    let desc_pos = pos2(text_left, rect.min.y + 86.0);
+    let desc_pos = pos2(text_left, rect.min.y + 92.0);
     let clip = Rect::from_min_size(desc_pos, vec2(text_width, 32.0));
     painter
         .with_clip_rect(clip)
@@ -2277,7 +2484,7 @@ fn app_card(ui: &mut Ui, card: AppCard<'_>) -> egui::Response {
     if let Some(source) = source {
         paint_source_pill(
             painter,
-            pos2(text_left + 4.0, rect.bottom() - 22.0),
+            pos2(text_left, rect.bottom() - 18.0),
             source,
             palette,
         );
@@ -2309,8 +2516,12 @@ fn glance_columns(ui: &Ui) -> usize {
 }
 
 fn tile_width(ui: &Ui, columns: usize) -> f32 {
+    tile_width_gap(ui, columns, CARD_GAP)
+}
+
+fn tile_width_gap(ui: &Ui, columns: usize, gap: f32) -> f32 {
     let columns = columns.max(1) as f32;
-    ((ui.available_width() - CARD_GAP * (columns - 1.0)) / columns).max(220.0)
+    ((ui.available_width() - gap * (columns - 1.0)) / columns).max(220.0)
 }
 
 fn section_eyebrow(ui: &mut Ui, label: &str, palette: &Palette) {
@@ -2321,63 +2532,70 @@ fn section_eyebrow(ui: &mut Ui, label: &str, palette: &Palette) {
     );
 }
 
-fn greeting() -> &'static str {
-    greeting_for_hour(local_hour())
-}
-
-fn local_hour() -> u32 {
-    command_output("date", &["+%H"])
-        .parse()
-        .ok()
-        .filter(|hour| *hour < 24)
-        .unwrap_or(18)
-}
-
-fn greeting_for_hour(hour: u32) -> &'static str {
-    match hour {
-        5..=11 => "Good morning",
-        12..=16 => "Good afternoon",
-        _ => "Good evening",
-    }
-}
-
 fn intent_card(
     ui: &mut Ui,
     width: f32,
     glyph: Glyph,
     title: &str,
     body: &str,
+    cta: &str,
     palette: &Palette,
 ) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(vec2(width, INTENT_HEIGHT), Sense::click());
     paint_surface_card(ui.painter(), rect, response.hovered(), palette);
+    for corner in [
+        rect.left_top() + vec2(-8.0, -5.0),
+        rect.right_top() + vec2(8.0, -5.0),
+        rect.left_bottom() + vec2(-8.0, 5.0),
+        rect.right_bottom() + vec2(8.0, 5.0),
+    ] {
+        ui.painter().text(
+            corner,
+            Align2::CENTER_CENTER,
+            "+",
+            FontId::proportional(14.0),
+            palette.muted,
+        );
+    }
 
-    let well = Rect::from_min_size(rect.min + vec2(18.0, 18.0), vec2(40.0, 40.0));
-    ui.painter().rect_filled(well, 12.0, palette.icon_well);
-    paint_glyph(ui.painter(), well.shrink(9.0), glyph, palette.accent);
+    let well = Rect::from_min_size(rect.min + vec2(24.0, 24.0), vec2(44.0, 44.0));
+    ui.painter().rect_stroke(
+        well,
+        0.0,
+        Stroke::new(1.0_f32, palette.border_strong),
+        StrokeKind::Inside,
+    );
+    paint_glyph(ui.painter(), well.shrink(12.0), glyph, palette.accent);
 
     let painter = ui.painter();
-    let text_left = rect.min.x + 18.0;
-    let text_width = (rect.width() - 36.0).max(24.0);
+    let text_left = rect.min.x + 24.0;
+    let text_width = (rect.width() - 48.0).max(24.0);
     painter.text(
-        pos2(text_left, rect.min.y + 70.0),
+        pos2(text_left, rect.min.y + 82.0),
         Align2::LEFT_TOP,
         title,
-        FontId::proportional(15.0),
+        FontId::proportional(22.0),
         palette.text,
     );
     let galley = painter.layout(
         body.to_owned(),
-        FontId::proportional(12.5),
+        FontId::proportional(13.5),
         palette.muted,
         text_width,
     );
     painter
         .with_clip_rect(Rect::from_min_size(
-            pos2(text_left, rect.min.y + 92.0),
+            pos2(text_left, rect.min.y + 114.0),
             vec2(text_width, 38.0),
         ))
-        .galley(pos2(text_left, rect.min.y + 92.0), galley, palette.muted);
+        .galley(pos2(text_left, rect.min.y + 114.0), galley, palette.muted);
+    painter.text(
+        pos2(text_left, rect.bottom() - 18.0),
+        Align2::LEFT_CENTER,
+        format!("{cta} →"),
+        FontId::proportional(14.0),
+        palette.accent,
+    );
     response
 }
 
@@ -2420,55 +2638,51 @@ fn metric_tile(
     response
 }
 
-fn system_details_card(ui: &mut Ui, rows: &[(&'static str, String)], palette: &Palette) {
-    Frame::new()
-        .fill(palette.surface)
-        .stroke(Stroke::new(1.0_f32, palette.border))
-        .corner_radius(CARD_RADIUS)
-        .inner_margin(egui::Margin::symmetric(0, 6))
-        .show(ui, |ui| {
-            ui.set_min_width(ui.available_width());
-            for (index, (label, value)) in rows.iter().enumerate() {
-                if index > 0 {
-                    let (line, _) =
-                        ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
-                    ui.painter().line_segment(
-                        [
-                            pos2(line.left() + 18.0, line.center().y),
-                            pos2(line.right() - 18.0, line.center().y),
-                        ],
-                        Stroke::new(1.0_f32, palette.border),
-                    );
-                }
-                let (rect, _) = ui.allocate_exact_size(
-                    vec2(ui.available_width(), DETAIL_ROW_HEIGHT),
-                    Sense::hover(),
-                );
-                let painter = ui.painter();
-                painter.text(
-                    pos2(rect.left() + 18.0, rect.center().y),
-                    Align2::LEFT_CENTER,
-                    *label,
-                    FontId::proportional(12.0),
-                    palette.muted,
-                );
-                let value_left = rect.left() + 18.0 + DETAIL_LABEL_WIDTH;
-                let value_width = (rect.right() - 18.0 - value_left).max(24.0);
-                let galley = painter.layout(
-                    value.clone(),
-                    FontId::proportional(13.5),
-                    palette.text,
-                    value_width,
-                );
-                let text_pos = pos2(value_left, rect.center().y - galley.size().y / 2.0);
-                painter
-                    .with_clip_rect(Rect::from_min_size(
-                        pos2(value_left, rect.top()),
-                        vec2(value_width, rect.height()),
-                    ))
-                    .galley(text_pos, galley, palette.text);
-            }
-        });
+struct SystemCard {
+    title: &'static str,
+    lines: Vec<String>,
+    bar: Option<f32>,
+}
+
+fn system_card(ui: &mut Ui, width: f32, card: &SystemCard, palette: &Palette) {
+    let (rect, _) = ui.allocate_exact_size(vec2(width, 168.0), Sense::hover());
+    paint_surface_card(ui.painter(), rect, false, palette);
+    let painter = ui.painter();
+    painter.text(
+        rect.min + vec2(22.0, 18.0),
+        Align2::LEFT_TOP,
+        card.title,
+        FontId::proportional(22.0),
+        palette.text,
+    );
+    for (index, line) in card.lines.iter().enumerate() {
+        let pos = rect.min + vec2(22.0, 54.0 + index as f32 * 22.0);
+        let galley = painter.layout(
+            line.clone(),
+            FontId::proportional(14.0),
+            if index == 0 {
+                palette.text
+            } else {
+                palette.muted
+            },
+            (rect.width() - 44.0).max(24.0),
+        );
+        painter
+            .with_clip_rect(Rect::from_min_size(pos, vec2(rect.width() - 44.0, 22.0)))
+            .galley(pos, galley, palette.text);
+    }
+    if let Some(fraction) = card.bar {
+        let bar = Rect::from_min_size(
+            pos2(rect.left() + 22.0, rect.bottom() - 22.0),
+            vec2(rect.width() - 44.0, 6.0),
+        );
+        painter.rect_filled(bar, 0.0, palette.border);
+        painter.rect_filled(
+            Rect::from_min_size(bar.min, vec2(bar.width() * fraction, 6.0)),
+            0.0,
+            palette.accent,
+        );
+    }
 }
 
 fn paint_surface_card(painter: &Painter, rect: Rect, hovered: bool, palette: &Palette) {
@@ -2489,60 +2703,146 @@ fn paint_surface_card(painter: &Painter, rect: Rect, hovered: bool, palette: &Pa
     );
 }
 
-fn recipe_card(
+fn recipe_row(
     ui: &mut Ui,
-    width: f32,
     selected: bool,
+    divider: bool,
+    locked: bool,
     label: &str,
     palette: &Palette,
-) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(width, RECIPE_CARD_HEIGHT), Sense::click());
-    paint_card_background(ui.painter(), rect, selected, palette);
-
-    let well = Rect::from_min_size(rect.min + vec2(16.0, 16.0), vec2(40.0, 40.0));
-    ui.painter().rect_filled(well, 12.0, palette.icon_well);
-    paint_glyph(ui.painter(), well.shrink(9.0), Glyph::Bolt, palette.accent);
-
-    let pip_rect = Rect::from_min_size(
-        pos2(rect.right() - 16.0 - RECIPE_PIP, rect.min.y + 16.0),
-        vec2(RECIPE_PIP, RECIPE_PIP),
+) -> bool {
+    let (rect, response) = ui.allocate_exact_size(
+        vec2(ui.available_width(), RECIPE_ROW_HEIGHT),
+        Sense::hover(),
     );
-    paint_select_pip(ui.painter(), pip_rect, selected, palette);
+    if response.hovered() {
+        ui.painter().rect_filled(rect, 0.0, palette.surface_hover);
+    }
+    if divider {
+        ui.painter().line_segment(
+            [rect.left_top(), rect.right_top()],
+            Stroke::new(1.0_f32, palette.border),
+        );
+    }
+    let well = Rect::from_min_size(
+        pos2(rect.left() + 22.0, rect.center().y - 20.0),
+        vec2(40.0, 40.0),
+    );
+    ui.painter().rect_stroke(
+        well,
+        0.0,
+        Stroke::new(1.0_f32, palette.border_strong),
+        StrokeKind::Inside,
+    );
+    paint_glyph(ui.painter(), well.shrink(11.0), Glyph::Bolt, palette.accent);
 
-    let text_left = rect.min.x + 16.0;
-    let text_width = (rect.width() - 32.0).max(24.0);
+    let text_left = well.right() + 18.0;
+    let button = vec2(124.0, 38.0);
+    let text_width = (rect.right() - 22.0 - button.x - 16.0 - text_left).max(40.0);
     let painter = ui.painter();
     painter.text(
-        pos2(text_left, rect.min.y + 68.0),
-        Align2::LEFT_TOP,
-        recipe_display_label(label),
-        FontId::proportional(14.0),
+        pos2(text_left, rect.center().y),
+        Align2::LEFT_BOTTOM,
+        recipe_title(label),
+        FontId::proportional(19.0),
         palette.text,
     );
-
     let galley = painter.layout(
         recipe_promise(label).to_owned(),
-        FontId::proportional(12.0),
+        FontId::proportional(13.5),
         palette.muted,
         text_width,
     );
+    let desc_pos = pos2(text_left, rect.center().y + 4.0);
     painter
-        .with_clip_rect(Rect::from_min_size(
-            pos2(text_left, rect.min.y + 88.0),
-            vec2(text_width, 24.0),
-        ))
-        .galley(pos2(text_left, rect.min.y + 88.0), galley, palette.muted);
+        .with_clip_rect(Rect::from_min_size(desc_pos, vec2(text_width, 24.0)))
+        .galley(desc_pos, galley, palette.muted);
 
-    if let Some(chip) = recipe_chip(label) {
-        paint_warm_chip(
-            painter,
-            pos2(text_left + 4.0, rect.bottom() - 22.0),
-            chip,
-            palette,
-        );
+    let button_rect = Rect::from_min_size(
+        pos2(
+            rect.right() - 22.0 - button.x,
+            rect.center().y - button.y / 2.0,
+        ),
+        button,
+    );
+    let (caption, fill, text, stroke) = if selected {
+        ("Added ✓", palette.accent, palette.accent_on, palette.accent)
+    } else {
+        (
+            "Add to queue",
+            Color32::TRANSPARENT,
+            palette.text,
+            palette.border_strong,
+        )
+    };
+    ui.push_id((label, "recipe-row"), |ui| {
+        ui.add_enabled_ui(!locked, |ui| {
+            ui.put(
+                button_rect,
+                Button::new(RichText::new(caption).color(text).strong())
+                    .fill(fill)
+                    .stroke(Stroke::new(1.0_f32, stroke))
+                    .corner_radius(0.0)
+                    .min_size(button),
+            )
+            .clicked()
+        })
+        .inner
+    })
+    .inner
+}
+
+fn recipe_title(label: &str) -> &'static str {
+    match label {
+        "Update System" => "Update everything",
+        "Enable Bluetooth" => "Turn Bluetooth on",
+        "Disable Bluetooth" => "Turn Bluetooth off",
+        "TLP (Laptops)" => "Make your battery last longer",
+        "Powertop" => "Cooler, quieter laptop",
+        "SWAP Fix" => "Fix slowdowns when memory is full",
+        "nala (rank mirrors) - Debian only" => "Faster, friendlier installs",
+        "Fastfetch" => "Show system info in the terminal",
+        "Stacer" => "System cleaner and monitor",
+        _ => "Admin playbook",
     }
+}
 
-    response
+fn recipe_list_rank(label: &str) -> u8 {
+    match label {
+        "Update System" => 0,
+        "Enable Bluetooth" => 1,
+        "Disable Bluetooth" => 2,
+        "TLP (Laptops)" => 3,
+        "Powertop" => 4,
+        "SWAP Fix" => 5,
+        "nala (rank mirrors) - Debian only" => 6,
+        "Fastfetch" => 7,
+        "Stacer" => 8,
+        _ => 100,
+    }
+}
+
+fn cursor_short_name(theme: CursorTheme) -> &'static str {
+    match theme {
+        CursorTheme::Classic => "Bibata Classic",
+        CursorTheme::Ice => "Bibata Ice",
+        CursorTheme::Amber => "Bibata Amber",
+        CursorTheme::Plasma => "KDE Plasma",
+    }
+}
+
+fn cursor_short_name_for(label: &str) -> String {
+    CursorTheme::ALL
+        .into_iter()
+        .find(|theme| theme.label() == label)
+        .map_or_else(
+            || label.to_owned(),
+            |theme| cursor_short_name(theme).to_owned(),
+        )
+}
+
+fn cursor_columns(ui: &Ui) -> usize {
+    ((ui.available_width() / 250.0) as usize).clamp(1, 4)
 }
 
 fn cursor_card(
@@ -2557,58 +2857,47 @@ fn cursor_card(
     let (rect, _) = ui.allocate_exact_size(vec2(width, CURSOR_CARD_HEIGHT), Sense::hover());
     paint_card_background(ui.painter(), rect, selected, palette);
 
-    let well = Rect::from_min_size(rect.min + vec2(16.0, 16.0), vec2(64.0, 64.0));
-    ui.painter().rect_filled(well, 12.0, palette.icon_well);
+    let stage = Rect::from_min_size(rect.min + vec2(16.0, 16.0), vec2(width - 32.0, 120.0));
+    ui.painter().rect_stroke(
+        stage,
+        0.0,
+        Stroke::new(1.0_f32, palette.border),
+        StrokeKind::Inside,
+    );
     if let Some(icon) = preview {
         ui.painter().image(
             icon.id(),
-            well.shrink(8.0),
+            Rect::from_center_size(stage.center(), vec2(64.0, 64.0)),
             Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
             Color32::WHITE,
         );
     }
-
-    let text_left = rect.min.x + 16.0;
     ui.painter().text(
-        pos2(text_left, rect.min.y + 92.0),
+        pos2(rect.min.x + 16.0, stage.bottom() + 14.0),
         Align2::LEFT_TOP,
-        theme.label(),
-        FontId::proportional(15.0),
+        cursor_short_name(theme),
+        FontId::proportional(21.0),
         palette.text,
     );
-    ui.painter().text(
-        pos2(text_left, rect.min.y + 114.0),
-        Align2::LEFT_TOP,
-        theme.directory(),
-        FontId::proportional(12.0),
-        palette.muted,
-    );
 
-    let button = vec2(84.0, 32.0);
-    let apply_rect = Rect::from_min_size(
-        pos2(
-            rect.right() - 16.0 - button.x,
-            rect.bottom() - 16.0 - button.y,
-        ),
-        button,
-    );
-    let stage_rect = Rect::from_min_size(
-        pos2(apply_rect.left() - 8.0 - button.x, apply_rect.top()),
-        button,
-    );
-    let stage_clicked = ui
-        .push_id((theme.directory(), "stage"), |ui| {
+    let button = vec2(width - 32.0, 44.0);
+    let apply_rect = Rect::from_min_size(pos2(rect.left() + 16.0, stage.bottom() + 52.0), button);
+    let stage_rect =
+        Rect::from_min_size(pos2(apply_rect.left(), apply_rect.bottom() + 8.0), button);
+    let apply_clicked = ui
+        .push_id((theme.directory(), "apply"), |ui| {
             ui.add_enabled_ui(!locked, |ui| {
-                ui.put(stage_rect, cursor_stage_button(selected, palette))
+                ui.put(apply_rect, cursor_apply_button(theme, button, palette))
                     .clicked()
             })
             .inner
         })
         .inner;
-    let apply_clicked = ui
-        .push_id((theme.directory(), "apply"), |ui| {
+    let stage_clicked = ui
+        .push_id((theme.directory(), "stage"), |ui| {
             ui.add_enabled_ui(!locked, |ui| {
-                ui.put(apply_rect, cursor_apply_button(palette)).clicked()
+                ui.put(stage_rect, cursor_stage_button(selected, button, palette))
+                    .clicked()
             })
             .inner
         })
@@ -2616,12 +2905,17 @@ fn cursor_card(
     (stage_clicked, apply_clicked)
 }
 
-fn cursor_stage_button(selected: bool, palette: &Palette) -> Button<'_> {
+fn cursor_stage_button(selected: bool, size: egui::Vec2, palette: &Palette) -> Button<'_> {
     let (label, fill, text, stroke) = if selected {
-        ("Staged", palette.accent, palette.accent_on, palette.accent)
+        (
+            "In queue ✓",
+            palette.accent,
+            palette.accent_on,
+            palette.accent,
+        )
     } else {
         (
-            "Stage",
+            "Add to queue",
             Color32::TRANSPARENT,
             palette.text,
             palette.border_strong,
@@ -2630,16 +2924,20 @@ fn cursor_stage_button(selected: bool, palette: &Palette) -> Button<'_> {
     Button::new(RichText::new(label).color(text).strong())
         .fill(fill)
         .stroke(Stroke::new(1.0_f32, stroke))
-        .corner_radius(16.0)
-        .min_size(vec2(84.0, 32.0))
+        .corner_radius(0.0)
+        .min_size(size)
 }
 
-fn cursor_apply_button(palette: &Palette) -> Button<'_> {
-    Button::new(RichText::new("Apply").color(palette.cta_text).strong())
-        .fill(palette.cta_fill)
-        .stroke(Stroke::new(1.0_f32, palette.cta_fill))
-        .corner_radius(16.0)
-        .min_size(vec2(84.0, 32.0))
+fn cursor_apply_button(theme: CursorTheme, size: egui::Vec2, palette: &Palette) -> Button<'_> {
+    Button::new(
+        RichText::new(format!("Use {} now", cursor_short_name(theme)))
+            .color(palette.cta_text)
+            .strong(),
+    )
+    .fill(palette.cta_fill)
+    .stroke(Stroke::new(1.0_f32, palette.cta_fill))
+    .corner_radius(0.0)
+    .min_size(size)
 }
 
 fn recipe_display_label(label: &str) -> &str {
@@ -2648,105 +2946,17 @@ fn recipe_display_label(label: &str) -> &str {
 
 fn recipe_promise(label: &str) -> &'static str {
     match label {
-        "Enable Bluetooth" => "Turn the Bluetooth radio on",
-        "Disable Bluetooth" => "Turn the Bluetooth radio off",
-        "TLP (Laptops)" => "Install and enable laptop power tuning",
-        "Powertop" => "Install power analysis tooling",
-        "Update System" => "Full distro update now",
-        "nala (rank mirrors) - Debian only" => "Install nala and rank Debian mirrors",
-        "Stacer" => "Install system optimizer",
-        "SWAP Fix" => "Tune swappiness for this machine",
-        "Fastfetch" => "Install a clean system summary tool",
+        "Enable Bluetooth" => "Enable Bluetooth and start it at boot.",
+        "Disable Bluetooth" => "Disable Bluetooth to save power.",
+        "TLP (Laptops)" => "Installs TLP to tune power use automatically.",
+        "Powertop" => "Installs Powertop to cut idle power and heat.",
+        "Update System" => "Install the latest updates for your system and apps.",
+        "nala (rank mirrors) - Debian only" => "Installs Nala, a nicer front end for apt.",
+        "Stacer" => "Installs Stacer to clear clutter and watch usage.",
+        "SWAP Fix" => "Adds a swap fix for smoother multitasking.",
+        "Fastfetch" => "Installs Fastfetch.",
         _ => "Admin playbook for this machine.",
     }
-}
-
-fn recipe_chip(label: &str) -> Option<&'static str> {
-    match label {
-        "TLP (Laptops)" => Some("LAPTOP"),
-        "Update System" | "SWAP Fix" => Some("CAUTION"),
-        other if other.contains("Debian only") => Some("DEBIAN ONLY"),
-        _ => None,
-    }
-}
-
-fn recipe_display_rank(label: &str) -> u8 {
-    match label {
-        "TLP (Laptops)" => 0,
-        "Powertop" => 1,
-        "Enable Bluetooth" => 2,
-        "Disable Bluetooth" => 3,
-        _ => 100,
-    }
-}
-
-fn paint_select_pip(painter: &Painter, rect: Rect, selected: bool, palette: &Palette) {
-    let center = rect.center();
-    let radius = rect.width() / 2.0;
-    if selected {
-        painter.circle_filled(center, radius, palette.accent);
-    } else {
-        painter.circle_stroke(
-            center,
-            radius - 0.5,
-            Stroke::new(1.2_f32, palette.border_strong),
-        );
-    }
-}
-
-/// Shared caution chip (`#FDBA74` / `#1C140A`) in every family, including Ember.
-fn paint_warm_chip(painter: &Painter, left_center: Pos2, label: &str, palette: &Palette) {
-    let width = (label.len() as f32 * 7.0 + 18.0).clamp(56.0, 148.0);
-    let rect = Rect::from_center_size(
-        pos2(left_center.x + width / 2.0, left_center.y),
-        vec2(width, 20.0),
-    );
-    match palette.mode {
-        ThemeMode::Dark => {
-            painter.rect_stroke(
-                rect,
-                6.0,
-                Stroke::new(1.0_f32, palette.caution),
-                StrokeKind::Inside,
-            );
-            painter.text(
-                rect.center(),
-                Align2::CENTER_CENTER,
-                label,
-                FontId::proportional(10.0),
-                palette.caution,
-            );
-        }
-        ThemeMode::Light => {
-            painter.rect_filled(rect, 6.0, palette.caution);
-            painter.text(
-                rect.center(),
-                Align2::CENTER_CENTER,
-                label,
-                FontId::proportional(10.0),
-                palette.caution_on,
-            );
-        }
-    }
-}
-
-fn status_pill(ui: &mut Ui, label: &str, palette: &Palette) {
-    let width = (label.len() as f32 * 6.6 + 22.0).clamp(88.0, 168.0);
-    let (rect, _) = ui.allocate_exact_size(vec2(width, 24.0), Sense::hover());
-    ui.painter().rect_filled(rect, 12.0, palette.surface);
-    ui.painter().rect_stroke(
-        rect,
-        12.0,
-        Stroke::new(1.0_f32, palette.border),
-        StrokeKind::Inside,
-    );
-    ui.painter().text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        label,
-        FontId::proportional(11.0),
-        palette.muted,
-    );
 }
 
 fn paint_kind_chip(ui: &mut Ui, kind: &str, palette: &Palette) {
@@ -2756,7 +2966,7 @@ fn paint_kind_chip(ui: &mut Ui, kind: &str, palette: &Palette) {
         "Recipe" => (palette.caution, palette.caution_on),
         _ => (palette.elevated, palette.accent),
     };
-    ui.painter().rect_filled(rect, 6.0, fill);
+    ui.painter().rect_filled(rect, 0.0, fill);
     ui.painter().text(
         rect.center(),
         Align2::CENTER_CENTER,
@@ -2769,22 +2979,7 @@ fn paint_kind_chip(ui: &mut Ui, kind: &str, palette: &Palette) {
 fn paint_glyph(painter: &Painter, rect: Rect, glyph: Glyph, color: Color32) {
     let stroke = Stroke::new(1.8_f32, color);
     match glyph {
-        Glyph::Plus => {
-            painter.line_segment(
-                [
-                    pos2(rect.center().x, rect.top()),
-                    pos2(rect.center().x, rect.bottom()),
-                ],
-                stroke,
-            );
-            painter.line_segment(
-                [
-                    pos2(rect.left(), rect.center().y),
-                    pos2(rect.right(), rect.center().y),
-                ],
-                stroke,
-            );
-        }
+        Glyph::Tab(page) => paint_page_symbol(painter, rect, page, color),
         Glyph::Bolt => {
             painter.line_segment(
                 [
@@ -2808,21 +3003,24 @@ fn paint_glyph(painter: &Painter, rect: Rect, glyph: Glyph, color: Color32) {
                 stroke,
             );
         }
-        Glyph::Briefcase => {
-            painter.rect_stroke(
-                Rect::from_min_max(
-                    pos2(rect.left() + 1.0, rect.center().y - 2.0),
-                    pos2(rect.right() - 1.0, rect.bottom() - 1.0),
-                ),
-                2.0,
-                stroke,
-                StrokeKind::Inside,
+        Glyph::Battery => {
+            let body = Rect::from_min_max(
+                pos2(rect.left(), rect.top() + 3.0),
+                pos2(rect.right() - 3.0, rect.bottom() - 3.0),
             );
-            painter.rect_stroke(
-                Rect::from_center_size(pos2(rect.center().x, rect.top() + 4.0), vec2(8.0, 6.0)),
-                1.5,
-                stroke,
-                StrokeKind::Inside,
+            painter.rect_stroke(body, 0.0, stroke, StrokeKind::Inside);
+            painter.rect_filled(
+                Rect::from_center_size(pos2(rect.right() - 1.0, rect.center().y), vec2(2.5, 6.0)),
+                0.0,
+                color,
+            );
+            painter.rect_filled(
+                Rect::from_min_max(
+                    body.min + vec2(3.0, 3.0),
+                    pos2(body.center().x + 2.0, body.max.y - 3.0),
+                ),
+                0.0,
+                color,
             );
         }
     }
@@ -2834,7 +3032,7 @@ fn cta_button(ui: &mut Ui, label: &str, enabled: bool, palette: &Palette) -> egu
         Button::new(RichText::new(label).color(palette.cta_text).strong())
             .fill(palette.cta_fill)
             .stroke(Stroke::new(1.0_f32, palette.cta_fill))
-            .corner_radius(16.0)
+            .corner_radius(0.0)
             .min_size(vec2(148.0, 36.0)),
     )
 }
@@ -2843,7 +3041,7 @@ fn ghost_button(ui: &mut Ui, label: &str, palette: &Palette) -> egui::Response {
     let width = (label.len() as f32 * 7.4 + 20.0).clamp(64.0, 120.0);
     let (rect, response) = ui.allocate_exact_size(vec2(width, 32.0), Sense::click());
     if response.hovered() {
-        ui.painter().rect_filled(rect, 8.0, palette.surface_hover);
+        ui.painter().rect_filled(rect, 0.0, palette.surface_hover);
     }
     ui.painter().text(
         rect.center(),
@@ -2907,10 +3105,10 @@ fn paint_source_pill(painter: &Painter, left_center: Pos2, label: &str, palette:
         pos2(left_center.x + width / 2.0, left_center.y),
         vec2(width, 20.0),
     );
-    painter.rect_filled(rect, 6.0, palette.elevated);
+    painter.rect_filled(rect, 0.0, palette.elevated);
     painter.rect_stroke(
         rect,
-        6.0,
+        0.0,
         Stroke::new(1.0_f32, palette.border),
         StrokeKind::Inside,
     );
@@ -2927,18 +3125,6 @@ fn source_pill_label(source: &str) -> String {
     source.to_ascii_uppercase()
 }
 
-fn staged_sentence(parts: &[String]) -> String {
-    match parts {
-        [] => "Nothing is staged.".to_owned(),
-        [only] => format!("This will {only}."),
-        [a, b] => format!("This will {a} and {b}."),
-        _ => {
-            let (last, rest) = parts.split_last().expect("at least three clauses");
-            format!("This will {}, and {last}.", rest.join(", "))
-        }
-    }
-}
-
 fn truncated_names(names: &[String], max_chars: usize) -> String {
     let joined = names.join(", ");
     if joined.chars().count() <= max_chars {
@@ -2953,15 +3139,6 @@ fn truncated_names(names: &[String], max_chars: usize) -> String {
         output.push(ch);
     }
     output
-}
-
-fn task_status_label(status: TaskStatus) -> &'static str {
-    match status {
-        TaskStatus::Queued => "Queued",
-        TaskStatus::Running => "Running",
-        TaskStatus::Success => "Done",
-        TaskStatus::Failed => "Failed",
-    }
 }
 
 fn task_status_color(status: TaskStatus, palette: &Palette) -> Color32 {
@@ -3273,9 +3450,7 @@ mod tests {
             remove_search: String::new(),
             distro_name: "Debian".to_owned(),
             package_manager: PackageManager::Apt,
-            host: "testhost".to_owned(),
             kernel: "6.12.0-test".to_owned(),
-            shell: "/bin/bash".to_owned(),
             de_wm: "sway".to_owned(),
             recent_runs: Vec::new(),
             log: String::new(),
@@ -3297,6 +3472,8 @@ mod tests {
             ],
             remove_scan: RemoveScanState::Ready,
             remove_scan_rx: None,
+            toast: None,
+            hardware: system::HardwareSnapshot::default(),
         }
     }
 
@@ -3350,10 +3527,8 @@ mod tests {
         app.admin_selected.insert(0);
 
         assert_eq!(app.total_staged_count(), 4);
-        assert_eq!(
-            app.modal_count_line(),
-            "This will install 1 app, remove 1 app, set 1 cursor, and run 1 recipe."
-        );
+        let verbs: Vec<&str> = app.queue_items().iter().map(|item| item.0).collect();
+        assert_eq!(verbs, ["Install", "Remove", "Apply", "Run"]);
         assert_eq!(
             app.dock_names(),
             vec![
@@ -3391,46 +3566,46 @@ mod tests {
         app.cursor_selected = Some(CursorTheme::Ice);
         app.admin_selected.insert(0);
 
+        let items: Vec<(&str, String)> = app
+            .queue_items()
+            .into_iter()
+            .map(|(verb, name, _)| (verb, name))
+            .collect();
         assert_eq!(
-            app.review_groups(),
+            items,
             vec![
-                ("Install", vec!["Firefox".into(), "VLC".into()]),
-                ("Remove", vec!["htop".into()]),
-                ("Cursor", vec!["Bibata Modern Ice".into()]),
-                ("Recipes", vec!["Update System".into()]),
+                ("Install", "Firefox".to_owned()),
+                ("Install", "VLC".to_owned()),
+                ("Remove", "htop".to_owned()),
+                ("Apply", "Bibata Modern Ice".to_owned()),
+                ("Run", "Update everything".to_owned()),
             ]
         );
+        let (_, _, key) = app.queue_items().remove(0);
+        app.unstage(key);
+        assert_eq!(app.install_selected_names(), vec!["VLC".to_owned()]);
         assert!(app.remove_includes_toolbox().is_none());
         app.remove_selected.insert(1);
         assert!(app.remove_includes_toolbox().is_some());
     }
 
     #[test]
-    fn review_modal_shows_grouped_names_before_password() {
+    fn review_panel_lists_names_before_password() {
         let src = production_main();
-        let groups = src
-            .split("fn review_groups")
-            .nth(1)
-            .and_then(|rest| rest.split("fn run_dock").next())
-            .expect("review_groups body");
-        assert!(groups.contains("\"Install\""));
-        assert!(groups.contains("\"Remove\""));
-        assert!(groups.contains("\"Cursor\""));
-        assert!(groups.contains("\"Recipes\""));
         let modal = src
             .split("fn sudo_modal")
             .nth(1)
-            .and_then(|rest| rest.split("impl eframe::App").next())
+            .and_then(|rest| rest.split("fn acknowledge_run_complete").next())
             .expect("sudo_modal body");
-        assert!(modal.contains("Review & Run"));
-        assert!(modal.contains("review_groups"));
+        assert!(modal.contains("Ready to run"));
+        assert!(modal.contains("queue_items"));
         assert!(modal.contains("sudo_name_list"));
-        assert!(!modal.contains("other_mode_staged_note"));
+        assert!(modal.contains("Clear all"));
         let name_list = modal.find("sudo_name_list").expect("name list");
-        let password = modal.find("Sudo password").expect("password label");
+        let password = modal.find("Your password").expect("password label");
         assert!(
             name_list < password,
-            "staged names must appear before the sudo password field"
+            "queued names must appear before the password field"
         );
     }
 
@@ -3466,7 +3641,7 @@ mod tests {
         assert!(app.install_selected.contains(&0));
         assert!(app.remove_selected.contains(&0));
         assert_eq!(app.cursor_selected, Some(CursorTheme::Amber));
-        assert!(!app.dock_visible());
+        assert!(app.dock_visible());
     }
 
     #[test]
@@ -3500,8 +3675,8 @@ mod tests {
         assert!(app.selection_locked());
         app.is_running = false;
         app.switch_page(Page::System);
-        assert!(!app.dock_visible());
-        // Selections on another mode still surface the dock while on Apps/Recipes.
+        assert!(app.dock_visible());
+        // Selections on another mode still surface the dock on every page.
         app.switch_page(Page::Apps);
         app.apps_mode = AppsMode::Install;
         app.install_selected.clear();
@@ -3654,7 +3829,7 @@ mod tests {
     }
 
     #[test]
-    fn chrome_uses_apps_mode_and_lumen_rail() {
+    fn chrome_uses_apps_mode_and_top_tabs() {
         let src = production_main();
         assert!(src.contains("enum AppsMode"));
         assert!(src.contains("Page::Apps"));
@@ -3664,15 +3839,17 @@ mod tests {
         assert!(!src.contains("Page::Administration"));
         assert!(!src.contains("Supported Distros"));
         assert!(!src.contains("Select All"));
-        assert!(src.contains("Review & Run"));
+        assert!(src.contains("Review & run"));
         assert!(src.contains("run_dock"));
-        assert_eq!(RAIL_WIDTH, 68.0);
-        assert_eq!(CARD_HEIGHT, 164.0);
-        assert_eq!(TITLE_SIZE, 26.0);
-        assert_eq!(INTENT_HEIGHT, 148.0);
-        assert_eq!(GLANCE_HEIGHT, 80.0);
+        assert_eq!(TOPBAR_HEIGHT, 60.0);
+        assert_eq!(CARD_HEIGHT, 178.0);
+        assert_eq!(TITLE_SIZE, 44.0);
+        assert_eq!(INTENT_HEIGHT, 190.0);
+        assert_eq!(GLANCE_HEIGHT, 84.0);
+        assert_eq!(CARD_RADIUS, 0.0);
         assert_eq!(DOCK_MIN_WIDTH, 520.0);
-        assert!(src.contains("{count} staged"));
+        assert!(src.contains("tasks queued"));
+        assert!(src.contains("fn topbar"));
         assert!(src.contains("fn home_page"));
         assert!(src.contains("fn recipes_page"));
         assert!(!src.contains("fn stub_page"));
@@ -3681,51 +3858,23 @@ mod tests {
     }
 
     #[test]
-    fn theme_toggle_is_the_combined_painter() {
+    fn skin_swatches_pick_family_or_white_light() {
         let src = production_main();
-        assert!(src.contains("paint_toggle_icon"));
-        assert!(!src.contains("paint_sun"));
-        assert!(!src.contains("paint_moon"));
-        assert!(!src.contains("assets/theme/"));
-        let theme = include_str!("theme.rs")
-            .split("mod tests {")
-            .next()
-            .expect("theme");
-        assert!(theme.contains("paint_theme_toggle"));
-        assert!(!theme.contains("paint_sun"));
-        assert!(!theme.contains("paint_moon"));
-    }
-
-    #[test]
-    fn rail_sun_toggles_mode_only_and_appearance_picks_family() {
-        let src = production_main();
-        let toggle = src
-            .split("fn toggle_theme")
-            .nth(1)
-            .and_then(|rest| rest.split("fn set_family").next())
-            .expect("toggle_theme");
-        assert!(toggle.contains("self.theme.toggle()"));
-        assert!(!toggle.contains("family"), "{toggle}");
-        assert!(src.contains("fn set_family"));
-        assert!(src.contains("appearance_picker"));
-        assert!(src.contains("appearance_card"));
-        assert!(src.contains("family_swatch"));
-        assert!(src.contains("context_menu"));
-        let rail = src
-            .split("fn rail(")
+        assert!(src.contains("fn set_skin"));
+        let bar = src
+            .split("fn topbar(")
             .nth(1)
             .and_then(|rest| rest.split("fn apps_page").next())
-            .expect("rail");
-        assert!(rail.contains("theme_toggle_button"));
-        assert!(rail.contains("toggle.clicked()"));
-        assert!(!rail.contains("set_family") || rail.contains("picked"));
-        assert!(rail.contains("appearance_picker"));
+            .expect("topbar");
+        assert!(bar.contains("light_swatch"));
+        assert!(bar.contains("family_swatch"));
         let swatch = src
             .split("fn family_swatch")
             .nth(1)
             .and_then(|rest| rest.split("fn mode_segment").next())
             .expect("family_swatch");
         assert!(swatch.contains("skin.accent"));
+        assert!(swatch.contains("Color32::WHITE"));
         assert!(!swatch.contains("caution"));
         assert!(!swatch.contains("CAUTION"));
     }
@@ -3750,10 +3899,10 @@ mod tests {
         assert!(check.contains("palette.accent"));
         assert!(!check.contains("caution"));
         let rail = src
-            .split("fn rail_button")
+            .split("fn tab_button")
             .nth(1)
-            .and_then(|rest| rest.split("fn theme_toggle_button").next())
-            .expect("rail_button");
+            .and_then(|rest| rest.split("fn queue_button").next())
+            .expect("tab_button");
         assert!(rail.contains("palette.accent"));
         assert!(!rail.contains("caution"));
         let filter = src
@@ -3761,7 +3910,7 @@ mod tests {
             .nth(1)
             .and_then(|rest| rest.split("fn search_field").next())
             .expect("filter_chip");
-        assert!(filter.contains("filter_selected_fill") || filter.contains("accent_bright"));
+        assert!(filter.contains("palette.accent"));
         assert!(!filter.contains("caution"));
         let cta = src
             .split("fn cta_button")
@@ -3770,15 +3919,6 @@ mod tests {
             .expect("cta_button");
         assert!(cta.contains("palette.cta_fill"));
         assert!(!cta.contains("caution"));
-        let chip = src
-            .split("fn paint_warm_chip")
-            .nth(1)
-            .and_then(|rest| rest.split("fn status_pill").next())
-            .expect("paint_warm_chip");
-        assert!(chip.contains("palette.caution"));
-        assert!(chip.contains("palette.caution_on"));
-        assert!(!chip.contains("cta_fill"));
-        assert!(!chip.contains("palette.accent"));
     }
 
     #[test]
@@ -3800,13 +3940,11 @@ mod tests {
 
         app.go_fresh_setup();
         assert_eq!(app.page, Page::Recipes);
-        assert_eq!(
-            app.admin_selected_names(),
-            vec!["Update System".to_owned(), "Fastfetch".to_owned()]
-        );
-        assert!(app.dock_visible());
+        assert!(app.admin_selected_names().is_empty());
 
         app.go_laptop_power();
+        assert_eq!(app.page, Page::Recipes);
+        assert!(app.toast.is_some());
         let selected = app.admin_selected_names();
         assert_eq!(
             selected,
@@ -3822,18 +3960,17 @@ mod tests {
     fn home_glance_uses_live_fields_not_fake_cpu() {
         let app = test_app();
         let metrics = app.glance_metrics();
-        assert_eq!(metrics[0].0, "OS");
+        assert_eq!(metrics[0].0, "Operating system");
         assert_eq!(metrics[1].0, "Kernel");
-        assert_eq!(metrics[2].0, "Uptime");
-        assert_eq!(metrics[3].0, "Packages");
+        assert_eq!(metrics[2].0, "Running for");
+        assert_eq!(metrics[3].0, "Installs with");
         assert_eq!(metrics[0].1, "Debian");
         assert_eq!(metrics[1].1, "6.12.0-test");
         assert_eq!(metrics[3].1, "apt-get");
         let src = production_main();
-        assert!(src.contains("SYSTEM GLANCE") || src.contains("System glance"));
+        assert!(src.contains("Your computer"));
         assert!(!src.contains("\"CPU\""));
-        assert!(!src.contains("No runs yet") || src.contains("stage apps or a recipe"));
-        assert!(src.contains("No runs yet — stage apps or a recipe to get started."));
+        assert!(src.contains("Nothing yet. Pick some apps or a recipe"));
         let home = src
             .split("fn home_page")
             .nth(1)
@@ -3844,10 +3981,10 @@ mod tests {
         assert!(home.contains("go_fresh_setup"));
         assert!(home.contains("go_laptop_power"));
         assert!(home.contains("go_system"));
-        assert!(home.contains("Jump to Recipes for essentials after a distro hop."));
-        assert!(home.contains("Browse the catalog and stage what you need."));
-        assert!(home.contains("TLP + Powertop tuned so the battery lasts."));
-        assert!(home.contains("System up to date"));
+        assert!(home.contains("One-click recipes for updates, Bluetooth and essentials."));
+        assert!(home.contains("Browse the catalog and pick what you need."));
+        assert!(home.contains("TLP and Powertop tuned for laptops."));
+        assert!(home.contains("What would you like to do?"));
     }
 
     #[test]
@@ -3861,15 +3998,13 @@ mod tests {
 
         assert!(app.dock_visible());
         assert_eq!(app.dock_count(), 3);
+        let names: Vec<String> = app.queue_items().into_iter().map(|item| item.1).collect();
         assert_eq!(
-            app.modal_count_line(),
-            "This will install 1 app and run 2 recipes."
-        );
-        assert_eq!(
-            app.review_groups(),
+            names,
             vec![
-                ("Install", vec!["Firefox".into()]),
-                ("Recipes", vec!["Update System".into(), "Fastfetch".into()]),
+                "Firefox".to_owned(),
+                "Update everything".to_owned(),
+                "Show system info in the terminal".to_owned(),
             ]
         );
 
@@ -3907,125 +4042,73 @@ mod tests {
         assert!(app.admin_selected.contains(&0));
         app.switch_page(Page::Home);
         app.is_running = false;
-        assert!(!app.dock_visible());
+        assert!(app.dock_visible());
         assert!(app.admin_selected.contains(&0));
     }
 
     #[test]
-    fn every_admin_task_has_a_promise_and_optional_chip() {
-        for task in admin_tasks() {
-            let promise = recipe_promise(&task.label);
+    fn every_admin_task_has_a_title_and_promise() {
+        let tasks = admin_tasks();
+        assert_eq!(tasks.len(), 9);
+        for task in &tasks {
             assert_ne!(
-                promise, "Admin playbook for this machine.",
+                recipe_promise(&task.label),
+                "Admin playbook for this machine.",
                 "{}",
                 task.label
             );
-            match task.label.as_str() {
-                "Enable Bluetooth" => {
-                    assert_eq!(promise, "Turn the Bluetooth radio on");
-                }
-                "Disable Bluetooth" => {
-                    assert_eq!(promise, "Turn the Bluetooth radio off");
-                }
-                "TLP (Laptops)" => {
-                    assert_eq!(promise, "Install and enable laptop power tuning");
-                    assert_eq!(recipe_chip(&task.label), Some("LAPTOP"));
-                }
-                "Powertop" => {
-                    assert_eq!(promise, "Install power analysis tooling");
-                }
-                "Update System" => {
-                    assert_eq!(promise, "Full distro update now");
-                    assert_eq!(recipe_chip(&task.label), Some("CAUTION"));
-                }
-                "SWAP Fix" => {
-                    assert_eq!(recipe_chip(&task.label), Some("CAUTION"));
-                }
-                other if other.contains("Debian only") => {
-                    assert_eq!(promise, "Install nala and rank Debian mirrors");
-                    assert_eq!(recipe_chip(&task.label), Some("DEBIAN ONLY"));
-                    assert_eq!(recipe_display_label(other), "nala (rank mirrors)");
-                }
-                _ => assert_eq!(recipe_chip(&task.label), None),
-            }
+            assert_ne!(
+                recipe_title(&task.label),
+                "Admin playbook",
+                "{}",
+                task.label
+            );
+            assert_ne!(recipe_list_rank(&task.label), 100, "{}", task.label);
         }
-        assert_eq!(admin_tasks().len(), 9);
-        let mut app = test_app();
-        app.admin_tasks = admin_tasks();
-        let groups = app.recipe_groups();
+        assert_eq!(recipe_title("Update System"), "Update everything");
         assert_eq!(
-            groups
-                .iter()
-                .map(|(name, _)| name.as_str())
-                .collect::<Vec<_>>(),
-            ["Power Management", "System"]
+            recipe_promise("Enable Bluetooth"),
+            "Enable Bluetooth and start it at boot."
         );
-        let power_labels: Vec<String> = groups[0]
-            .1
-            .iter()
-            .filter_map(|&index| app.admin_tasks.get(index).map(|task| task.label.clone()))
-            .collect();
         assert_eq!(
-            power_labels,
-            [
-                "TLP (Laptops)",
-                "Powertop",
-                "Enable Bluetooth",
-                "Disable Bluetooth"
-            ]
+            recipe_display_label("nala (rank mirrors) - Debian only"),
+            "nala (rank mirrors)"
         );
     }
 
     #[test]
-    fn system_detail_keeps_live_fields_without_fake_cpu() {
-        let app = test_app();
-        let rows = app.system_detail_rows();
-        assert_eq!(rows[0].0, "OS");
-        assert_eq!(rows[1].0, "Host");
-        assert_eq!(rows[2].0, "Kernel");
-        assert_eq!(rows[3].0, "Uptime");
-        assert_eq!(rows[4].0, "Shell");
-        assert_eq!(rows[5].0, "DE/WM");
-        assert_eq!(rows[6].0, "Package Manager");
-        assert_eq!(rows[7].0, "App Directory");
-        assert_eq!(rows[1].1, "testhost");
-        assert_eq!(rows[4].1, "/bin/bash");
+    fn system_page_shows_four_cards_from_live_data() {
         let src = production_main();
         let system = src
             .split("fn system_info_page")
             .nth(1)
-            .and_then(|rest| rest.split("fn modal_count_line").next())
+            .and_then(|rest| rest.split("struct SystemCard").next())
             .expect("system_info_page");
-        assert!(system.contains("Glance"));
-        assert!(system.contains("Details"));
-        assert!(system.contains("Appearance"));
-        assert!(system.contains("appearance_card"));
-        assert!(system.contains("up {}"));
-        assert!(system.contains("system_details_card"));
-        assert!(!system.contains("Copy all"));
-        assert!(!system.contains("copy_system_details"));
+        for title in ["System", "Processor", "Memory", "Storage"] {
+            assert!(system.contains(&format!("title: \"{title}\"")), "{title}");
+        }
+        assert!(system.contains("This computer"));
+        assert!(system.contains("HardwareSnapshot") || system.contains("hw."));
         assert!(!system.contains("command_output"));
         assert!(!system.contains("\"CPU\""));
-        assert_eq!(greeting_for_hour(7), "Good morning");
-        assert_eq!(greeting_for_hour(13), "Good afternoon");
-        assert_eq!(greeting_for_hour(21), "Good evening");
-        assert_eq!(greeting_for_hour(2), "Good evening");
     }
 
     #[test]
-    fn apps_and_recipes_reserve_dock_padding() {
-        let mut app = test_app();
-        assert!(app.dock_can_appear());
-        app.switch_page(Page::Recipes);
-        assert!(app.dock_can_appear());
-        app.switch_page(Page::Home);
-        assert!(!app.dock_can_appear());
-        app.switch_page(Page::Cursor);
-        assert!(app.dock_can_appear());
-        app.switch_page(Page::System);
-        assert!(!app.dock_can_appear());
+    fn every_page_reserves_dock_padding() {
         let src = production_main();
-        assert!(src.contains("bottom: if self.dock_can_appear() { 120 } else { 40 }"));
+        assert!(src.contains("bottom: 120,"));
+        let mut app = test_app();
+        app.install_selected.insert(0);
+        for page in [
+            Page::Home,
+            Page::Apps,
+            Page::Recipes,
+            Page::Cursor,
+            Page::System,
+        ] {
+            app.switch_page(page);
+            assert!(app.dock_visible(), "{page:?}");
+        }
     }
 
     #[test]

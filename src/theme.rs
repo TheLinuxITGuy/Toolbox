@@ -15,16 +15,16 @@ use std::path::{Path, PathBuf};
 
 use eframe::egui::{Color32, Context, Painter, Pos2, Rect, Shape, Stroke, Vec2, Visuals, vec2};
 
-pub const VOID_DARK: Color32 = Color32::from_rgb(0x07, 0x08, 0x0A);
-pub const SURFACE_DARK: Color32 = Color32::from_rgb(0x11, 0x13, 0x18);
-pub const ELEVATED_DARK: Color32 = Color32::from_rgb(0x1A, 0x1D, 0x26);
-pub const TEXT_DARK: Color32 = Color32::from_rgb(0xF4, 0xF5, 0xF7);
-pub const MUTED_DARK: Color32 = Color32::from_rgb(0x8B, 0x92, 0xA5);
+pub const VOID_DARK: Color32 = Color32::from_rgb(0x07, 0x0b, 0x0b);
+pub const SURFACE_DARK: Color32 = Color32::from_rgb(0x07, 0x0b, 0x0b);
+pub const ELEVATED_DARK: Color32 = Color32::from_rgb(0x12, 0x16, 0x16);
+pub const TEXT_DARK: Color32 = Color32::from_rgb(0xe4, 0xf0, 0xef);
+pub const MUTED_DARK: Color32 = Color32::from_rgb(0x86, 0xa1, 0x9f);
 pub const ACCENT_DARK: Color32 = Color32::from_rgb(0x5E, 0xEA, 0xD4);
-pub const ACCENT_ON_DARK: Color32 = Color32::from_rgb(0x07, 0x08, 0x0A);
+pub const ACCENT_ON_DARK: Color32 = Color32::from_rgb(0x07, 0x0b, 0x0b);
 pub const DANGER: Color32 = Color32::from_rgb(0xFF, 0x6B, 0x6B);
 
-pub const VOID_LIGHT: Color32 = Color32::from_rgb(0xF0, 0xF2, 0xF5);
+pub const VOID_LIGHT: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
 pub const SURFACE_LIGHT: Color32 = Color32::WHITE;
 pub const ELEVATED_LIGHT: Color32 = Color32::from_rgb(0xF7, 0xF8, 0xFA);
 pub const TEXT_LIGHT: Color32 = Color32::from_rgb(0x0B, 0x12, 0x20);
@@ -36,29 +36,29 @@ pub const BORDER_LIGHT_BASE: Color32 = Color32::from_rgb(0x0F, 0x17, 0x2A);
 pub const CAUTION: Color32 = Color32::from_rgb(0xFD, 0xBA, 0x74);
 pub const CAUTION_ON: Color32 = Color32::from_rgb(0x1C, 0x14, 0x0A);
 
-const BLUE_VOID_DARK: Color32 = Color32::from_rgb(0x06, 0x0A, 0x12);
-const BLUE_SURFACE_DARK: Color32 = Color32::from_rgb(0x0E, 0x15, 0x20);
-const BLUE_ELEVATED_DARK: Color32 = Color32::from_rgb(0x16, 0x1E, 0x2C);
-const BLUE_TEXT_DARK: Color32 = Color32::from_rgb(0xE8, 0xEE, 0xF7);
-const BLUE_MUTED_DARK: Color32 = Color32::from_rgb(0x84, 0x94, 0xAB);
-const BLUE_ACCENT_DARK: Color32 = Color32::from_rgb(0x60, 0xA5, 0xFA);
-const BLUE_ACCENT_ON_DARK: Color32 = Color32::from_rgb(0x06, 0x10, 0x18);
+const BLUE_VOID_DARK: Color32 = Color32::from_rgb(0x0b, 0x0e, 0x13);
+const BLUE_SURFACE_DARK: Color32 = Color32::from_rgb(0x0b, 0x0e, 0x13);
+const BLUE_ELEVATED_DARK: Color32 = Color32::from_rgb(0x16, 0x19, 0x1E);
+const BLUE_TEXT_DARK: Color32 = Color32::from_rgb(0xe8, 0xed, 0xf3);
+const BLUE_MUTED_DARK: Color32 = Color32::from_rgb(0x8b, 0x97, 0xa8);
+const BLUE_ACCENT_DARK: Color32 = Color32::from_rgb(0x7a, 0xa5, 0xd2);
+const BLUE_ACCENT_ON_DARK: Color32 = Color32::from_rgb(0x0b, 0x0e, 0x13);
 
-const BLUE_VOID_LIGHT: Color32 = Color32::from_rgb(0xEE, 0xF2, 0xF8);
+const BLUE_VOID_LIGHT: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
 const BLUE_ELEVATED_LIGHT: Color32 = Color32::from_rgb(0xF4, 0xF7, 0xFB);
-const BLUE_ACCENT_LIGHT: Color32 = Color32::from_rgb(0x25, 0x63, 0xEB);
+const BLUE_ACCENT_LIGHT: Color32 = Color32::from_rgb(0x41, 0x61, 0x80);
 const BLUE_ACCENT_BRIGHT: Color32 = Color32::from_rgb(0x3B, 0x82, 0xF6);
 const BLUE_ACCENT_ON_LIGHT: Color32 = Color32::from_rgb(0xEF, 0xF6, 0xFF);
 
-const GREEN_VOID_DARK: Color32 = Color32::from_rgb(0x07, 0x0B, 0x08);
-const GREEN_SURFACE_DARK: Color32 = Color32::from_rgb(0x10, 0x16, 0x12);
-const GREEN_ELEVATED_DARK: Color32 = Color32::from_rgb(0x17, 0x1E, 0x18);
-const GREEN_TEXT_DARK: Color32 = Color32::from_rgb(0xEE, 0xF4, 0xEF);
-const GREEN_MUTED_DARK: Color32 = Color32::from_rgb(0x8A, 0x96, 0x8C);
-const GREEN_ACCENT_DARK: Color32 = Color32::from_rgb(0x4A, 0xDE, 0x80);
-const GREEN_ACCENT_ON_DARK: Color32 = Color32::from_rgb(0x07, 0x14, 0x0C);
+const GREEN_VOID_DARK: Color32 = Color32::from_rgb(0x0a, 0x11, 0x0c);
+const GREEN_SURFACE_DARK: Color32 = Color32::from_rgb(0x0a, 0x11, 0x0c);
+const GREEN_ELEVATED_DARK: Color32 = Color32::from_rgb(0x15, 0x1C, 0x17);
+const GREEN_TEXT_DARK: Color32 = Color32::from_rgb(0xe6, 0xf0, 0xe9);
+const GREEN_MUTED_DARK: Color32 = Color32::from_rgb(0x86, 0xa0, 0x8e);
+const GREEN_ACCENT_DARK: Color32 = Color32::from_rgb(0x6f, 0xcf, 0x8e);
+const GREEN_ACCENT_ON_DARK: Color32 = Color32::from_rgb(0x0a, 0x11, 0x0c);
 
-const GREEN_VOID_LIGHT: Color32 = Color32::from_rgb(0xF0, 0xF4, 0xF1);
+const GREEN_VOID_LIGHT: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
 const GREEN_ELEVATED_LIGHT: Color32 = Color32::from_rgb(0xF5, 0xF8, 0xF5);
 const GREEN_TEXT_LIGHT: Color32 = Color32::from_rgb(0x0B, 0x1A, 0x10);
 const GREEN_MUTED_LIGHT: Color32 = Color32::from_rgb(0x64, 0x78, 0x6A);
@@ -66,22 +66,22 @@ const GREEN_ACCENT_LIGHT: Color32 = Color32::from_rgb(0x15, 0x80, 0x3D);
 const GREEN_ACCENT_BRIGHT: Color32 = Color32::from_rgb(0x22, 0xC5, 0x5E);
 const GREEN_ACCENT_ON_LIGHT: Color32 = Color32::from_rgb(0x05, 0x2E, 0x16);
 
-const ORANGE_VOID_DARK: Color32 = Color32::from_rgb(0x0C, 0x09, 0x07);
-const ORANGE_SURFACE_DARK: Color32 = Color32::from_rgb(0x16, 0x11, 0x0E);
-const ORANGE_ELEVATED_DARK: Color32 = Color32::from_rgb(0x1F, 0x18, 0x14);
-const ORANGE_TEXT_DARK: Color32 = Color32::from_rgb(0xF7, 0xF1, 0xEB);
-const ORANGE_MUTED_DARK: Color32 = Color32::from_rgb(0xA0, 0x8B, 0x7A);
-const ORANGE_ACCENT_DARK: Color32 = Color32::from_rgb(0xF9, 0x73, 0x16);
-const ORANGE_ACCENT_ON_DARK: Color32 = Color32::from_rgb(0x1A, 0x0C, 0x04);
+const ORANGE_VOID_DARK: Color32 = Color32::from_rgb(0x12, 0x0e, 0x0a);
+const ORANGE_SURFACE_DARK: Color32 = Color32::from_rgb(0x12, 0x0e, 0x0a);
+const ORANGE_ELEVATED_DARK: Color32 = Color32::from_rgb(0x1D, 0x19, 0x15);
+const ORANGE_TEXT_DARK: Color32 = Color32::from_rgb(0xf3, 0xeb, 0xe3);
+const ORANGE_MUTED_DARK: Color32 = Color32::from_rgb(0xa8, 0x96, 0x84);
+const ORANGE_ACCENT_DARK: Color32 = Color32::from_rgb(0xf0, 0x94, 0x4a);
+const ORANGE_ACCENT_ON_DARK: Color32 = Color32::from_rgb(0x12, 0x0e, 0x0a);
 
-const ORANGE_VOID_LIGHT: Color32 = Color32::from_rgb(0xF5, 0xF1, 0xEC);
+const ORANGE_VOID_LIGHT: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
 const ORANGE_ELEVATED_LIGHT: Color32 = Color32::from_rgb(0xFA, 0xF7, 0xF4);
 const ORANGE_TEXT_LIGHT: Color32 = Color32::from_rgb(0x1C, 0x12, 0x0A);
 const ORANGE_MUTED_LIGHT: Color32 = Color32::from_rgb(0x8B, 0x73, 0x60);
 const ORANGE_ACCENT_LIGHT: Color32 = Color32::from_rgb(0xC2, 0x41, 0x0C);
 const ORANGE_ACCENT_ON_LIGHT: Color32 = Color32::from_rgb(0xFF, 0xF7, 0xED);
 
-const DIM_ALPHA_14: u8 = 36;
+const DIM_ALPHA_14: u8 = 33;
 const DIM_ALPHA_12: u8 = 31;
 const TEAL_LIGHT_DIM_ALPHA: u8 = 28;
 
@@ -153,6 +153,7 @@ impl ThemeMode {
         }
     }
 
+    #[allow(dead_code)]
     pub fn toggle(self) -> Self {
         match self {
             Self::Dark => Self::Light,
@@ -160,6 +161,7 @@ impl ThemeMode {
         }
     }
 
+    #[allow(dead_code)]
     pub fn toggle_tooltip(self) -> &'static str {
         match self {
             Self::Dark => "Switch to light theme — right-click or long-press for appearance",
@@ -216,10 +218,13 @@ struct Seed {
     accent_on: Color32,
     accent_dim_alpha: u8,
     border_ink: Color32,
+    /// Solid hairline color; `None` derives a translucent border from `border_ink`.
+    line: Option<Color32>,
 }
 
 /// Derived chrome colors for one Lumen skin.
 #[derive(Clone, Copy, Debug)]
+#[allow(dead_code)]
 pub struct Palette {
     pub mode: ThemeMode,
     pub void: Color32,
@@ -273,8 +278,10 @@ impl Palette {
         );
         match mode {
             ThemeMode::Dark => {
-                let border = Color32::from_rgba_unmultiplied(255, 255, 255, 18);
-                let border_strong = Color32::from_rgba_unmultiplied(255, 255, 255, 31);
+                let border = seed
+                    .line
+                    .unwrap_or(Color32::from_rgba_unmultiplied(255, 255, 255, 18));
+                let border_strong = mix(border, seed.text, 0.22);
                 Self {
                     mode,
                     void: seed.void,
@@ -290,7 +297,7 @@ impl Palette {
                     accent_on: seed.accent_on,
                     danger: DANGER,
                     tile: seed.surface,
-                    tile_selected: mix(seed.surface, seed.accent, 0.14),
+                    tile_selected: mix(seed.surface, seed.accent, 0.13),
                     cta_fill: seed.accent,
                     cta_text: contrasting_on(seed.accent, seed.accent_on, seed.text),
                     widget_bg: seed.elevated,
@@ -307,7 +314,7 @@ impl Palette {
                     cancel_text: seed.text,
                     log_inner: seed.void,
                     log_text: seed.text,
-                    surface_hover: mix(seed.surface, seed.elevated, 0.65),
+                    surface_hover: mix(seed.surface, seed.accent, 0.13),
                     caution: CAUTION,
                     caution_on: CAUTION_ON,
                 }
@@ -368,6 +375,7 @@ impl Palette {
     }
 
     /// Combined sun + right-facing crescent. Same glyph in both themes.
+    #[allow(dead_code)]
     pub fn paint_toggle_icon(&self, painter: &Painter, rect: Rect, punch: Color32) {
         paint_theme_toggle(painter, rect, self.text, punch);
     }
@@ -385,6 +393,7 @@ fn seed(family: ThemeFamily, mode: ThemeMode) -> Seed {
             accent_bright: ACCENT_DARK,
             accent_on: ACCENT_ON_DARK,
             accent_dim_alpha: DIM_ALPHA_14,
+            line: Some(Color32::from_rgb(0x1F, 0x34, 0x33)),
             border_ink: Color32::WHITE,
         },
         (ThemeFamily::Teal, ThemeMode::Light) => Seed {
@@ -397,6 +406,7 @@ fn seed(family: ThemeFamily, mode: ThemeMode) -> Seed {
             accent_bright: ACCENT_BRIGHT,
             accent_on: ACCENT_ON_LIGHT,
             accent_dim_alpha: TEAL_LIGHT_DIM_ALPHA,
+            line: None,
             border_ink: BORDER_LIGHT_BASE,
         },
         (ThemeFamily::Blue, ThemeMode::Dark) => Seed {
@@ -409,6 +419,7 @@ fn seed(family: ThemeFamily, mode: ThemeMode) -> Seed {
             accent_bright: BLUE_ACCENT_DARK,
             accent_on: BLUE_ACCENT_ON_DARK,
             accent_dim_alpha: DIM_ALPHA_14,
+            line: Some(Color32::from_rgb(0x24, 0x30, 0x40)),
             border_ink: Color32::WHITE,
         },
         (ThemeFamily::Blue, ThemeMode::Light) => Seed {
@@ -421,6 +432,7 @@ fn seed(family: ThemeFamily, mode: ThemeMode) -> Seed {
             accent_bright: BLUE_ACCENT_BRIGHT,
             accent_on: BLUE_ACCENT_ON_LIGHT,
             accent_dim_alpha: DIM_ALPHA_12,
+            line: None,
             border_ink: TEXT_LIGHT,
         },
         (ThemeFamily::Green, ThemeMode::Dark) => Seed {
@@ -433,6 +445,7 @@ fn seed(family: ThemeFamily, mode: ThemeMode) -> Seed {
             accent_bright: GREEN_ACCENT_DARK,
             accent_on: GREEN_ACCENT_ON_DARK,
             accent_dim_alpha: DIM_ALPHA_14,
+            line: Some(Color32::from_rgb(0x22, 0x36, 0x2A)),
             border_ink: Color32::WHITE,
         },
         (ThemeFamily::Green, ThemeMode::Light) => Seed {
@@ -445,6 +458,7 @@ fn seed(family: ThemeFamily, mode: ThemeMode) -> Seed {
             accent_bright: GREEN_ACCENT_BRIGHT,
             accent_on: GREEN_ACCENT_ON_LIGHT,
             accent_dim_alpha: DIM_ALPHA_12,
+            line: None,
             border_ink: GREEN_TEXT_LIGHT,
         },
         (ThemeFamily::Orange, ThemeMode::Dark) => Seed {
@@ -457,6 +471,7 @@ fn seed(family: ThemeFamily, mode: ThemeMode) -> Seed {
             accent_bright: ORANGE_ACCENT_DARK,
             accent_on: ORANGE_ACCENT_ON_DARK,
             accent_dim_alpha: DIM_ALPHA_14,
+            line: Some(Color32::from_rgb(0x3A, 0x2C, 0x20)),
             border_ink: Color32::WHITE,
         },
         (ThemeFamily::Orange, ThemeMode::Light) => Seed {
@@ -469,6 +484,7 @@ fn seed(family: ThemeFamily, mode: ThemeMode) -> Seed {
             accent_bright: ORANGE_ACCENT_DARK,
             accent_on: ORANGE_ACCENT_ON_LIGHT,
             accent_dim_alpha: DIM_ALPHA_12,
+            line: None,
             border_ink: ORANGE_TEXT_LIGHT,
         },
     }
@@ -730,15 +746,15 @@ mod tests {
 
     #[test]
     fn lumen_hex_values_are_exact() {
-        assert_eq!(hex(VOID_DARK), "#07080A");
-        assert_eq!(hex(SURFACE_DARK), "#111318");
-        assert_eq!(hex(ELEVATED_DARK), "#1A1D26");
-        assert_eq!(hex(TEXT_DARK), "#F4F5F7");
-        assert_eq!(hex(MUTED_DARK), "#8B92A5");
+        assert_eq!(hex(VOID_DARK), "#070B0B");
+        assert_eq!(hex(SURFACE_DARK), "#070B0B");
+        assert_eq!(hex(ELEVATED_DARK), "#121616");
+        assert_eq!(hex(TEXT_DARK), "#E4F0EF");
+        assert_eq!(hex(MUTED_DARK), "#86A19F");
         assert_eq!(hex(ACCENT_DARK), "#5EEAD4");
-        assert_eq!(hex(ACCENT_ON_DARK), "#07080A");
+        assert_eq!(hex(ACCENT_ON_DARK), "#070B0B");
         assert_eq!(hex(DANGER), "#FF6B6B");
-        assert_eq!(hex(VOID_LIGHT), "#F0F2F5");
+        assert_eq!(hex(VOID_LIGHT), "#FFFFFF");
         assert_eq!(hex(SURFACE_LIGHT), "#FFFFFF");
         assert_eq!(hex(ELEVATED_LIGHT), "#F7F8FA");
         assert_eq!(hex(TEXT_LIGHT), "#0B1220");
@@ -762,37 +778,37 @@ mod tests {
         let orange_dark = Palette::from(ThemeFamily::Orange, ThemeMode::Dark);
         let orange_light = Palette::from(ThemeFamily::Orange, ThemeMode::Light);
 
-        assert_eq!(hex(teal_dark.void), "#07080A");
+        assert_eq!(hex(teal_dark.void), "#070B0B");
         assert_eq!(hex(teal_dark.accent), "#5EEAD4");
-        assert_eq!(hex(blue_dark.void), "#060A12");
-        assert_eq!(hex(blue_dark.surface), "#0E1520");
-        assert_eq!(hex(blue_dark.elevated), "#161E2C");
-        assert_eq!(hex(blue_dark.text), "#E8EEF7");
-        assert_eq!(hex(blue_dark.muted), "#8494AB");
-        assert_eq!(hex(blue_dark.accent), "#60A5FA");
-        assert_eq!(hex(blue_dark.accent_on), "#061018");
-        assert_eq!(blue_dark.accent_dim.a(), 36);
+        assert_eq!(hex(blue_dark.void), "#0B0E13");
+        assert_eq!(hex(blue_dark.surface), "#0B0E13");
+        assert_eq!(hex(blue_dark.elevated), "#16191E");
+        assert_eq!(hex(blue_dark.text), "#E8EDF3");
+        assert_eq!(hex(blue_dark.muted), "#8B97A8");
+        assert_eq!(hex(blue_dark.accent), "#7AA5D2");
+        assert_eq!(hex(blue_dark.accent_on), "#0B0E13");
+        assert_eq!(blue_dark.accent_dim.a(), 33);
 
-        assert_eq!(hex(blue_light.void), "#EEF2F8");
+        assert_eq!(hex(blue_light.void), "#FFFFFF");
         assert_eq!(hex(blue_light.surface), "#FFFFFF");
         assert_eq!(hex(blue_light.elevated), "#F4F7FB");
         assert_eq!(hex(blue_light.text), "#0B1220");
         assert_eq!(hex(blue_light.muted), "#64748B");
-        assert_eq!(hex(blue_light.accent), "#2563EB");
+        assert_eq!(hex(blue_light.accent), "#416180");
         assert_eq!(hex(blue_light.accent_bright), "#3B82F6");
         assert_eq!(hex(blue_light.accent_on), "#EFF6FF");
         assert_eq!(blue_light.accent_dim.a(), 31);
 
-        assert_eq!(hex(green_dark.void), "#070B08");
-        assert_eq!(hex(green_dark.surface), "#101612");
-        assert_eq!(hex(green_dark.elevated), "#171E18");
-        assert_eq!(hex(green_dark.text), "#EEF4EF");
-        assert_eq!(hex(green_dark.muted), "#8A968C");
-        assert_eq!(hex(green_dark.accent), "#4ADE80");
-        assert_eq!(hex(green_dark.accent_on), "#07140C");
-        assert_eq!(green_dark.accent_dim.a(), 36);
+        assert_eq!(hex(green_dark.void), "#0A110C");
+        assert_eq!(hex(green_dark.surface), "#0A110C");
+        assert_eq!(hex(green_dark.elevated), "#151C17");
+        assert_eq!(hex(green_dark.text), "#E6F0E9");
+        assert_eq!(hex(green_dark.muted), "#86A08E");
+        assert_eq!(hex(green_dark.accent), "#6FCF8E");
+        assert_eq!(hex(green_dark.accent_on), "#0A110C");
+        assert_eq!(green_dark.accent_dim.a(), 33);
 
-        assert_eq!(hex(green_light.void), "#F0F4F1");
+        assert_eq!(hex(green_light.void), "#FFFFFF");
         assert_eq!(hex(green_light.surface), "#FFFFFF");
         assert_eq!(hex(green_light.elevated), "#F5F8F5");
         assert_eq!(hex(green_light.text), "#0B1A10");
@@ -802,22 +818,22 @@ mod tests {
         assert_eq!(hex(green_light.accent_on), "#052E16");
         assert_eq!(green_light.accent_dim.a(), 31);
 
-        assert_eq!(hex(orange_dark.void), "#0C0907");
-        assert_eq!(hex(orange_dark.surface), "#16110E");
-        assert_eq!(hex(orange_dark.elevated), "#1F1814");
-        assert_eq!(hex(orange_dark.text), "#F7F1EB");
-        assert_eq!(hex(orange_dark.muted), "#A08B7A");
-        assert_eq!(hex(orange_dark.accent), "#F97316");
-        assert_eq!(hex(orange_dark.accent_on), "#1A0C04");
-        assert_eq!(orange_dark.accent_dim.a(), 36);
+        assert_eq!(hex(orange_dark.void), "#120E0A");
+        assert_eq!(hex(orange_dark.surface), "#120E0A");
+        assert_eq!(hex(orange_dark.elevated), "#1D1915");
+        assert_eq!(hex(orange_dark.text), "#F3EBE3");
+        assert_eq!(hex(orange_dark.muted), "#A89684");
+        assert_eq!(hex(orange_dark.accent), "#F0944A");
+        assert_eq!(hex(orange_dark.accent_on), "#120E0A");
+        assert_eq!(orange_dark.accent_dim.a(), 33);
 
-        assert_eq!(hex(orange_light.void), "#F5F1EC");
+        assert_eq!(hex(orange_light.void), "#FFFFFF");
         assert_eq!(hex(orange_light.surface), "#FFFFFF");
         assert_eq!(hex(orange_light.elevated), "#FAF7F4");
         assert_eq!(hex(orange_light.text), "#1C120A");
         assert_eq!(hex(orange_light.muted), "#8B7360");
         assert_eq!(hex(orange_light.accent), "#C2410C");
-        assert_eq!(hex(orange_light.accent_bright), "#F97316");
+        assert_eq!(hex(orange_light.accent_bright), "#F0944A");
         assert_eq!(hex(orange_light.accent_on), "#FFF7ED");
         assert_eq!(orange_light.accent_dim.a(), 31);
         assert_eq!(orange_light.cta_fill, orange_light.accent_bright);
@@ -873,13 +889,12 @@ mod tests {
         assert_eq!(palette.tile, BLUE_SURFACE_DARK);
         assert_eq!(
             palette.tile_selected,
-            mix(BLUE_SURFACE_DARK, BLUE_ACCENT_DARK, 0.14)
+            mix(BLUE_SURFACE_DARK, BLUE_ACCENT_DARK, 0.13)
         );
         assert_eq!(palette.icon_well, BLUE_ELEVATED_DARK);
         assert_eq!(palette.danger, DANGER);
-        assert_eq!(palette.border.a(), 18);
-        assert_eq!(palette.border_strong.a(), 31);
-        assert_eq!(palette.accent_dim.a(), 36);
+        assert_eq!(hex(palette.border), "#243040");
+        assert_eq!(palette.accent_dim.a(), 33);
         assert_eq!(palette.caution, CAUTION);
         assert_eq!(palette.caution_on, CAUTION_ON);
         assert_ne!(palette.caution, palette.cta_fill);
@@ -897,12 +912,11 @@ mod tests {
         assert_eq!(palette.filter_selected_fill, ACCENT_DARK);
         assert_eq!(palette.filter_selected_text, ACCENT_ON_DARK);
         assert_eq!(palette.tile, SURFACE_DARK);
-        assert_eq!(palette.tile_selected, mix(SURFACE_DARK, ACCENT_DARK, 0.14));
+        assert_eq!(palette.tile_selected, mix(SURFACE_DARK, ACCENT_DARK, 0.13));
         assert_eq!(palette.icon_well, ELEVATED_DARK);
         assert_eq!(palette.danger, DANGER);
-        assert_eq!(palette.border.a(), 18);
-        assert_eq!(palette.border_strong.a(), 31);
-        assert_eq!(palette.accent_dim.a(), 36);
+        assert_eq!(hex(palette.border), "#1F3433");
+        assert_eq!(palette.accent_dim.a(), 33);
         assert_eq!(palette.caution, CAUTION);
         assert_eq!(palette.caution_on, CAUTION_ON);
         assert_ne!(palette.caution, palette.cta_fill);
@@ -983,7 +997,7 @@ mod tests {
     fn orange_uses_rust_not_caution_peach() {
         for mode in [ThemeMode::Dark, ThemeMode::Light] {
             let palette = Palette::from(ThemeFamily::Orange, mode);
-            assert_eq!(hex(palette.accent_bright), "#F97316");
+            assert_eq!(hex(palette.accent_bright), "#F0944A");
             assert_ne!(palette.accent, CAUTION);
             assert_ne!(palette.cta_fill, CAUTION);
             assert_eq!(palette.cta_fill, ORANGE_ACCENT_DARK);
@@ -997,28 +1011,28 @@ mod tests {
         let orange = Palette::from(ThemeFamily::Orange, ThemeMode::Dark);
         let teal = Palette::from(ThemeFamily::Teal, ThemeMode::Dark);
 
-        assert_eq!(hex(blue.void), "#060A12");
-        assert_eq!(hex(blue.surface), "#0E1520");
-        assert_eq!(hex(blue.accent), "#60A5FA");
+        assert_eq!(hex(blue.void), "#0B0E13");
+        assert_eq!(hex(blue.surface), "#0B0E13");
+        assert_eq!(hex(blue.accent), "#7AA5D2");
         assert_eq!(blue.cta_fill, blue.accent);
         assert_eq!(blue.filter_selected_fill, blue.accent);
         assert_eq!(
             blue.tile_selected,
-            mix(BLUE_SURFACE_DARK, BLUE_ACCENT_DARK, 0.14)
+            mix(BLUE_SURFACE_DARK, BLUE_ACCENT_DARK, 0.13)
         );
 
-        assert_eq!(hex(green.void), "#070B08");
-        assert_eq!(hex(green.surface), "#101612");
-        assert_eq!(hex(green.accent), "#4ADE80");
+        assert_eq!(hex(green.void), "#0A110C");
+        assert_eq!(hex(green.surface), "#0A110C");
+        assert_eq!(hex(green.accent), "#6FCF8E");
         assert_ne!(green.accent, teal.accent);
         assert_ne!(hex(green.accent), "#5EEAD4");
         assert_eq!(green.cta_fill, green.accent);
 
-        assert_eq!(hex(orange.void), "#0C0907");
-        assert_eq!(hex(orange.surface), "#16110E");
-        assert_eq!(hex(orange.accent), "#F97316");
-        assert_eq!(hex(orange.cta_fill), "#F97316");
-        assert_eq!(hex(orange.filter_selected_fill), "#F97316");
+        assert_eq!(hex(orange.void), "#120E0A");
+        assert_eq!(hex(orange.surface), "#120E0A");
+        assert_eq!(hex(orange.accent), "#F0944A");
+        assert_eq!(hex(orange.cta_fill), "#F0944A");
+        assert_eq!(hex(orange.filter_selected_fill), "#F0944A");
         assert_eq!(hex(orange.caution), "#FDBA74");
         assert_eq!(hex(orange.caution_on), "#1C140A");
         assert_ne!(orange.accent, orange.caution);
@@ -1031,7 +1045,7 @@ mod tests {
     fn green_accent_is_leaf_not_teal_mint() {
         let dark = Palette::from(ThemeFamily::Green, ThemeMode::Dark);
         let light = Palette::from(ThemeFamily::Green, ThemeMode::Light);
-        assert_eq!(hex(dark.accent), "#4ADE80");
+        assert_eq!(hex(dark.accent), "#6FCF8E");
         assert_eq!(hex(light.accent_bright), "#22C55E");
         assert_ne!(dark.accent, ACCENT_DARK);
         assert_ne!(light.accent, ACCENT_DARK);
@@ -1093,7 +1107,7 @@ mod tests {
                 palette.icon_well, palette.tile,
                 "{label} icon well must step off the tile"
             );
-            assert_ne!(palette.tile, palette.void);
+            // Cards are transparent in the redesign: tile equals void on dark skins.
             assert_ne!(palette.border, palette.surface);
             assert!(
                 contrast_ratio(palette.caution_on, palette.caution) >= 4.5,

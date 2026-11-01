@@ -1,5 +1,6 @@
 #!/bin/bash
-# Fix Broadcom BCM4331 wifi: stop the bcma driver from grabbing the card so wl can use it.
+# Fixes wifi on Omarchy for the 2012 MacBook Pro (Broadcom BCM4331).
+# Stops the bcma driver from grabbing the card so wl can use it.
 set -e
 
 echo "== Making the fix permanent =="
